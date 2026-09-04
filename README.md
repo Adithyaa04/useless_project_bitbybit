@@ -69,15 +69,15 @@ Better output model, which can show the names of establishments and help the hum
 For Hardware:
 
 # Schematic & Circuit
-![Circuit](Add your circuit diagram here)
-*Add caption explaining connections*
+![Circuit](./circuit.jpeg)
 
-![Schematic](Add your schematic diagram here)
-*Add caption explaining the schematic*
+
+![Schematic](./schematic.jpeg)
+
 
 # Build Photos
-![Components](Add photo of your components here)
-*List out all components shown*
+![Components](./component.jpeg)
+
 
 ![Build](Add photos of build process here)
 *Explain the build steps*
