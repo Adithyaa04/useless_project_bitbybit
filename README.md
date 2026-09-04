@@ -52,18 +52,14 @@ For Software:
 For Software:
 
 # Screenshots (Add at least 3)
-![Screenshot1](Add screenshot 1 here with proper name)
+![Screenshot1](./screenshot1.jpg)
 First prototype for the application. just a human (green dot) and zombies(red) in a black background, and they can interact with eachother
 
-![Screenshot2](Add screenshot 2 here with proper name)
+![Screenshot2](./screenshot2.jpg)
 LOC, integrating OpenStreetMap, pynmea2 pyserial and other modules necessary for the functioning
 
-![Screenshot3](Add screenshot 3 here with proper name)
+![Screenshot3](./screenshot3.jpg)
 Better output model, which can show the names of establishments and help the human to shelter
-
-# Diagrams
-![Workflow](Add your workflow/architecture diagram here)
-*Add caption explaining your workflow*
 
 For Hardware:
 
