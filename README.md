@@ -26,10 +26,11 @@ We made a hand-held Cyber Deck using Raspberry Pi, and since your street is a li
 ## Technical Details
 ### Technologies/Components Used
 For Software:
-- [Languages used]
-- [Frameworks used]
-- [Libraries used]
-- [Tools used]
+curses (terminal rendering engine for the TFT display)
+argparse, json, math, random, threading (standard library)
+pynmea2 (parses NMEA GPS sentences)
+pyserial (reads the GPS module over UART)
+OpenStreetMap Overpass API (source of real road + point-of-interest data)
 
 For Hardware:
 - [List main components]
@@ -39,10 +40,15 @@ For Hardware:
 ### Implementation
 For Software:
 # Installation
-[commands]
+pip install pynmea2 pyserial --break-system-packages
 
-# Run
-[commands]
+# One-time map prep (needs wifi, run before heading outdoors)
+python3 fetch_map1.py --lat <your-lat> --lon <your-lon> --radius 300
+
+# Run (indoor test, no GPS hardware needed)
+python3 zombie_cyberdeck.py --sim
+
+# Run (for real, outdoors, with GPS wired up)
 
 ### Project Documentation
 For Software:
