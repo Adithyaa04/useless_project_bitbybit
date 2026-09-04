@@ -55,10 +55,10 @@ For Software:
 ![Screenshot1](./screenshot1.jpeg)
 First prototype for the application. just a human (green dot) and zombies(red) in a black background, and they can interact with eachother
 
-![Screenshot2](./screenshot2.jpeg)
+![Screenshot2](./screenshot3.jpeg)
 LOC, integrating OpenStreetMap, pynmea2 pyserial and other modules necessary for the functioning
 
-![Screenshot3](./screenshot3.jpeg)
+![Screenshot3](./screenshot2.jpeg)
 Better output model, which can show the names of establishments and help the human to shelter
 
 # Diagrams
