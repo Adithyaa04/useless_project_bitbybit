@@ -30,6 +30,10 @@ TICK_HZ = 4                 # game update rate
 SPAWN_MIN_M = 40            # zombies spawn this far from you at minimum
 SPAWN_MAX_M = 90
 
+GRID_SPACING_M = 15         # spacing of the background reference grid, in meters
+TRAIL_MIN_STEP_M = 2.0      # drop a breadcrumb every time you move at least this far
+TRAIL_MAX_POINTS = 300      # cap so it doesn't grow forever on a long walk
+
 
 # ---------------- Coordinate helpers ----------------
 def latlon_to_local(lat, lon, lat0, lon0):
@@ -121,16 +125,62 @@ class Zombie:
 
 
 # ---------------- Rendering ----------------
-def render(stdscr, player_x, player_y, zombies, status=""):
+def world_to_screen(wx, wy, player_x, player_y, cx, cy):
+    gx = cx + int(round((wx - player_x) / SCALE_M_PER_CELL))
+    gy = cy - int(round((wy - player_y) / SCALE_M_PER_CELL))
+    return gx, gy
+
+
+def draw_grid(stdscr, player_x, player_y, cx, cy, max_x, max_y):
+    """Draws dots at fixed world-space intervals. Because these are anchored
+    to absolute coordinates (not to the player), they visibly scroll past
+    as you move -- that's what actually reads as 'I am walking'."""
+    half_w_m = (max_x / 2 + 1) * SCALE_M_PER_CELL
+    half_h_m = (max_y / 2 + 1) * SCALE_M_PER_CELL
+
+    start_x = math.floor((player_x - half_w_m) / GRID_SPACING_M) * GRID_SPACING_M
+    end_x = player_x + half_w_m
+    start_y = math.floor((player_y - half_h_m) / GRID_SPACING_M) * GRID_SPACING_M
+    end_y = player_y + half_h_m
+
+    wx = start_x
+    while wx <= end_x:
+        wy = start_y
+        while wy <= end_y:
+            gx, gy = world_to_screen(wx, wy, player_x, player_y, cx, cy)
+            if 0 <= gy < max_y - 1 and 0 <= gx < max_x:
+                stdscr.addstr(gy, gx, '.', curses.color_pair(4))
+            wy += GRID_SPACING_M
+        wx += GRID_SPACING_M
+
+
+def draw_trail(stdscr, trail, player_x, player_y, cx, cy, max_x, max_y):
+    for wx, wy in trail:
+        gx, gy = world_to_screen(wx, wy, player_x, player_y, cx, cy)
+        if 0 <= gy < max_y - 1 and 0 <= gx < max_x:
+            stdscr.addstr(gy, gx, '\u00b7', curses.color_pair(4))  # middle dot
+
+
+def draw_compass(stdscr, cx, cy, max_x, max_y):
+    stdscr.addstr(0, max(0, cx), 'N', curses.color_pair(3) | curses.A_DIM)
+    stdscr.addstr(min(max_y - 2, max_y - 2), max(0, cx), 'S', curses.color_pair(3) | curses.A_DIM)
+    stdscr.addstr(cy, 0, 'W', curses.color_pair(3) | curses.A_DIM)
+    stdscr.addstr(cy, max_x - 1, 'E', curses.color_pair(3) | curses.A_DIM)
+
+
+def render(stdscr, player_x, player_y, zombies, trail, status=""):
     stdscr.erase()
     max_y, max_x = stdscr.getmaxyx()
     cx, cy = max_x // 2, max_y // 2
 
+    draw_grid(stdscr, player_x, player_y, cx, cy, max_x, max_y)
+    draw_trail(stdscr, trail, player_x, player_y, cx, cy, max_x, max_y)
+    draw_compass(stdscr, cx, cy, max_x, max_y)
+
     stdscr.addstr(cy, cx, '@', curses.color_pair(1) | curses.A_BOLD)
 
     for z in zombies:
-        gx = cx + int(round((z.x - player_x) / SCALE_M_PER_CELL))
-        gy = cy - int(round((z.y - player_y) / SCALE_M_PER_CELL))
+        gx, gy = world_to_screen(z.x, z.y, player_x, player_y, cx, cy)
         if 0 <= gy < max_y - 1 and 0 <= gx < max_x:
             stdscr.addstr(gy, gx, 'Z', curses.color_pair(2) | curses.A_BOLD)
 
@@ -160,7 +210,8 @@ def main(stdscr, args):
     curses.start_color()
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)   # you
     curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)     # zombies / death
-    curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)   # status bar
+    curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)   # status bar / compass
+    curses.init_pair(4, curses.COLOR_CYAN, curses.COLOR_BLACK)    # grid / trail (background)
 
     gps = SimulatedGPS() if args.sim else SerialGPS(args.gps, args.baud)
 
@@ -181,6 +232,8 @@ def main(stdscr, args):
 
     dt = 1.0 / TICK_HZ
     last_time = time.time()
+    trail = []
+    last_trail_pos = None
 
     while True:
         now = time.time()
@@ -203,6 +256,11 @@ def main(stdscr, args):
             continue
         px, py = latlon_to_local(lat, lon, origin_lat, origin_lon)
 
+        if last_trail_pos is None or math.hypot(px - last_trail_pos[0], py - last_trail_pos[1]) >= TRAIL_MIN_STEP_M:
+            trail.append((px, py))
+            trail = trail[-TRAIL_MAX_POINTS:]
+            last_trail_pos = (px, py)
+
         min_dist = float('inf')
         for z in zombies:
             z.step(px, py, dt)
@@ -210,7 +268,7 @@ def main(stdscr, args):
 
         status = (f"nearest: {min_dist:5.1f}m  zombies: {len(zombies)}  "
                   f"({'wasd to move, ' if args.sim else ''}q=quit)")
-        render(stdscr, px, py, zombies, status)
+        render(stdscr, px, py, zombies, trail, status)
 
         if min_dist <= CATCH_RADIUS_M:
             death_screen(stdscr)
