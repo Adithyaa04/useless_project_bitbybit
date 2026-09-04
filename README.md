@@ -52,7 +52,8 @@ For Software:
 For Software:
 
 # Screenshots (Add at least 3)
-![Screenshot1](<img width="1280" height="640" src="./screenshot1.jpeg" />)
+![Screenshot1]<img width="1280" height="640" src="./screenshot1.jpeg" alt="Screenshot1">
+
 First prototype for the application. just a human (green dot) and zombies(red) in a black background, and they can interact with eachother
 
 ![Screenshot2](./screenshot3.jpeg)
