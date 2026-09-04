@@ -42,10 +42,8 @@ For Software:
 # Installation
 pip install pynmea2 pyserial --break-system-packages
 
-# One-time map prep (needs wifi, run before heading outdoors)
-python3 fetch_map1.py --lat <your-lat> --lon <your-lon> --radius 300
-
 # Run (indoor test, no GPS hardware needed)
+python3 fetch_map1.py --lat <your-lat> --lon <your-lon> --radius 300
 python3 zombie_cyberdeck.py --sim
 
 # Run (for real, outdoors, with GPS wired up)
