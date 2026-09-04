@@ -6,13 +6,13 @@
 
 
 ## Basic Details
-### Team Name: [Name]
+### Team Name: [Bit By Bit]
 
 
 ### Team Members
-- Team Lead: [Name] - [College]
-- Member 2: [Name] - [College]
-- Member 3: [Name] - [College]
+- Member 1: Abhijith R - NSS College Of Engineering Palakkad
+- Member 2: Adithya Vijay - NSS College Of Engineering Palakkad
+
 
 ### Project Description
 [2-3 lines about what your project does]
