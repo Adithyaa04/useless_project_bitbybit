@@ -40,11 +40,11 @@ For Hardware:
 ### Implementation
 For Software:
 # Installation
--pip install pynmea2 pyserial --break-system-packages
+- pip install pynmea2 pyserial --break-system-packages
 
 # Run
--python3 fetch_map1.py --lat <your-lat> --lon <your-lon> --radius 300
--python3 zombie_cyberdeck.py --sim
+- python3 fetch_map1.py --lat <your-lat> --lon <your-lon> --radius 300
+- python3 zombie_cyberdeck.py --sim
 
 # Run (for real, outdoors, with GPS wired up)
 
@@ -53,13 +53,13 @@ For Software:
 
 # Screenshots (Add at least 3)
 ![Screenshot1](Add screenshot 1 here with proper name)
-*Add caption explaining what this shows*
+First prototype for the application. just a human (green dot) and zombies(red) in a black background, and they can interact with eachother
 
 ![Screenshot2](Add screenshot 2 here with proper name)
-*Add caption explaining what this shows*
+LOC, integrating OpenStreetMap, pynmea2 pyserial and other modules necessary for the functioning
 
 ![Screenshot3](Add screenshot 3 here with proper name)
-*Add caption explaining what this shows*
+Better output model, which can show the names of establishments and help the human to shelter
 
 # Diagrams
 ![Workflow](Add your workflow/architecture diagram here)
