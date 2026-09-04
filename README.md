@@ -61,9 +61,7 @@ LOC, integrating OpenStreetMap, pynmea2 pyserial and other modules necessary for
 ![Screenshot3](Add screenshot 3 here with proper name)
 Better output model, which can show the names of establishments and help the human to shelter
 
-# Diagrams
-![Workflow](Add your workflow/architecture diagram here)
-*Add caption explaining your workflow*
+
 
 For Hardware:
 
