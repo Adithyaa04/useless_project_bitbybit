@@ -32,6 +32,21 @@ SPAWN_MIN_M = 40            # zombies spawn this far from you at minimum
 SPAWN_MAX_M = 90
 
 MAP_LINE_STEP_CAP = 100     # max interpolation steps per road segment (perf safety cap)
+POI_CALLOUT_RADIUS_M = 30   # how close you need to be for a place's name to show in the status bar
+
+# category -> (single-char marker, curses color pair). Color pairs are set up
+# in main(); 5-9 are POI-specific so they read differently from roads/zombies.
+POI_STYLE = {
+    'school':  ('S', 5),
+    'worship': ('C', 6),
+    'hospital':('H', 2),
+    'food':    ('F', 7),
+    'park':    ('P', 8),
+    'fuel':    ('U', 3),
+    'bank':    ('B', 3),
+    'police':  ('!', 2),
+}
+POI_DEFAULT_STYLE = ('*', 8)
 
 
 # ---------------- Coordinate helpers ----------------
@@ -46,14 +61,15 @@ def latlon_to_local(lat, lon, lat0, lon0):
 
 # ---------------- Offline map data (from fetch_map.py) ----------------
 def load_map(path, fallback_lat, fallback_lon):
-    """Loads the pre-fetched road data. Returns (origin_lat, origin_lon, segments).
-    segments is a flat list of ((x1,y1),(x2,y2)) tuples in local meters, already
-    projected -- so per-frame drawing is just arithmetic, nothing heavy."""
+    """Loads the pre-fetched road+POI data. Returns (origin_lat, origin_lon,
+    segments, pois). segments is a flat list of ((x1,y1),(x2,y2)) tuples in
+    local meters, already projected. pois is a list of dicts with x, y, name,
+    category, also pre-projected -- so per-frame drawing is just arithmetic."""
     try:
         with open(path) as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
-        return fallback_lat, fallback_lon, []
+        return fallback_lat, fallback_lon, [], []
 
     origin_lat = data['origin_lat']
     origin_lon = data['origin_lon']
@@ -62,7 +78,13 @@ def load_map(path, fallback_lat, fallback_lon):
         pts = [latlon_to_local(lat, lon, origin_lat, origin_lon) for lat, lon in way]
         for i in range(len(pts) - 1):
             segments.append((pts[i], pts[i + 1]))
-    return origin_lat, origin_lon, segments
+
+    pois = []
+    for poi in data.get('pois', []):
+        x, y = latlon_to_local(poi['lat'], poi['lon'], origin_lat, origin_lon)
+        pois.append({'x': x, 'y': y, 'name': poi['name'], 'category': poi.get('category', 'other')})
+
+    return origin_lat, origin_lon, segments, pois
 
 
 # ---------------- GPS sources ----------------
@@ -152,9 +174,11 @@ def world_to_screen(wx, wy, player_x, player_y, cx, cy):
 
 
 def draw_map(stdscr, segments, player_x, player_y, cx, cy, max_x, max_y):
-    """Draws the offline road data as '#' characters. Cheap: it's just line
-    interpolation between two already-projected points, no per-frame geometry
-    work and no network/file access -- fine for a Pi 3 at a few Hz."""
+    """Draws the offline road data as a dim dotted line ('.') rather than solid
+    '#' blocks, so it reads as background texture instead of competing with
+    the player/zombie glyphs. Cheap: it's just line interpolation between two
+    already-projected points, no per-frame geometry work and no network/file
+    access -- fine for a Pi 3 at a few Hz."""
     margin = 5
     for (x1, y1), (x2, y2) in segments:
         gx1, gy1 = world_to_screen(x1, y1, player_x, player_y, cx, cy)
@@ -172,15 +196,36 @@ def draw_map(stdscr, segments, player_x, player_y, cx, cy, max_x, max_y):
             gx = round(gx1 + (gx2 - gx1) * t)
             gy = round(gy1 + (gy2 - gy1) * t)
             if 0 <= gy < max_y - 1 and 0 <= gx < max_x:
-                stdscr.addstr(gy, gx, '#', curses.color_pair(4))
+                stdscr.addstr(gy, gx, '.', curses.color_pair(4) | curses.A_DIM)
 
 
-def render(stdscr, player_x, player_y, zombies, segments, status=""):
+def draw_pois(stdscr, pois, player_x, player_y, cx, cy, max_x, max_y):
+    """Draws named points of interest (schools, churches, shops...) as single
+    labeled markers, mapscii-style. Just point placement, same cost as a zombie."""
+    for poi in pois:
+        gx, gy = world_to_screen(poi['x'], poi['y'], player_x, player_y, cx, cy)
+        if 0 <= gy < max_y - 1 and 0 <= gx < max_x:
+            char, pair = POI_STYLE.get(poi['category'], POI_DEFAULT_STYLE)
+            stdscr.addstr(gy, gx, char, curses.color_pair(pair) | curses.A_BOLD)
+
+
+def nearest_poi_name(px, py, pois, max_dist=POI_CALLOUT_RADIUS_M):
+    """Returns the name of the closest POI within max_dist meters, or None."""
+    best_name, best_dist = None, max_dist
+    for poi in pois:
+        d = math.hypot(poi['x'] - px, poi['y'] - py)
+        if d < best_dist:
+            best_dist, best_name = d, poi['name']
+    return best_name
+
+
+def render(stdscr, player_x, player_y, zombies, segments, pois, status=""):
     stdscr.erase()
     max_y, max_x = stdscr.getmaxyx()
     cx, cy = max_x // 2, max_y // 2
 
     draw_map(stdscr, segments, player_x, player_y, cx, cy, max_x, max_y)
+    draw_pois(stdscr, pois, player_x, player_y, cx, cy, max_x, max_y)
 
     stdscr.addstr(cy, cx, '@', curses.color_pair(1) | curses.A_BOLD)
 
@@ -217,11 +262,15 @@ def main(stdscr, args):
     curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)     # zombies / death
     curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)   # status bar
     curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # map roads (background)
+    curses.init_pair(5, curses.COLOR_CYAN, curses.COLOR_BLACK)    # schools
+    curses.init_pair(6, curses.COLOR_MAGENTA, curses.COLOR_BLACK) # places of worship
+    curses.init_pair(7, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # food/shops
+    curses.init_pair(8, curses.COLOR_BLUE, curses.COLOR_BLACK)    # parks / other POIs
 
     # Load the pre-fetched road data (see fetch_map.py). Its origin_lat/lon
     # become the fixed coordinate frame for this whole session, so the map
     # and your live GPS position always line up.
-    map_origin_lat, map_origin_lon, segments = load_map(
+    map_origin_lat, map_origin_lon, segments, pois = load_map(
         args.map, fallback_lat=10.0, fallback_lon=76.3
     )
     if not segments:
@@ -279,9 +328,11 @@ def main(stdscr, args):
             z.step(px, py, dt)
             min_dist = min(min_dist, math.hypot(z.x - px, z.y - py))
 
-        status = (f"nearest: {min_dist:5.1f}m  zombies: {len(zombies)}  "
+        near = nearest_poi_name(px, py, pois)
+        status = (f"nearest zombie: {min_dist:5.1f}m  "
+                  f"{('near: ' + near + '  ') if near else ''}"
                   f"({'wasd to move, ' if args.sim else ''}q=quit)")
-        render(stdscr, px, py, zombies, segments, status)
+        render(stdscr, px, py, zombies, segments, pois, status)
 
         if min_dist <= CATCH_RADIUS_M:
             death_screen(stdscr)

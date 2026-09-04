@@ -29,13 +29,42 @@ OVERPASS_URLS = [
 
 def build_query(lat, lon, radius_m):
     # "highway" covers roads, paths, tracks, footways -- anything walkable/driveable.
+    # The node[...] clauses pull named points of interest (schools, churches,
+    # shops, hospitals, parks...) so the game can label them, mapscii-style,
+    # instead of just drawing blank road lines.
     return f"""
     [out:json][timeout:25];
     (
       way["highway"](around:{radius_m},{lat},{lon});
+      node["name"]["amenity"](around:{radius_m},{lat},{lon});
+      node["name"]["shop"](around:{radius_m},{lat},{lon});
+      node["name"]["tourism"](around:{radius_m},{lat},{lon});
+      node["name"]["leisure"](around:{radius_m},{lat},{lon});
     );
     out geom;
     """
+
+
+# Maps an OSM tag value (amenity/shop/tourism/leisure) to a short category
+# label we store in the map file. Keeps the game's marker/color logic simple.
+POI_TAG_TO_CATEGORY = {
+    'school': 'school', 'college': 'school', 'university': 'school', 'kindergarten': 'school',
+    'place_of_worship': 'worship',
+    'hospital': 'hospital', 'clinic': 'hospital', 'pharmacy': 'hospital', 'doctors': 'hospital',
+    'restaurant': 'food', 'cafe': 'food', 'fast_food': 'food', 'bar': 'food', 'pub': 'food',
+    'park': 'park', 'garden': 'park', 'playground': 'park',
+    'fuel': 'fuel',
+    'bank': 'bank', 'atm': 'bank',
+    'police': 'police', 'fire_station': 'police',
+}
+
+
+def categorize_poi(tags):
+    for key in ('amenity', 'shop', 'tourism', 'leisure'):
+        val = tags.get(key)
+        if val:
+            return POI_TAG_TO_CATEGORY.get(val, key)  # fall back to the raw tag key
+    return 'other'
 
 
 def fetch(lat, lon, radius_m):
@@ -87,22 +116,34 @@ def main():
     raw = fetch(lat, lon, args.radius)
 
     ways = []
+    pois = []
     for el in raw.get('elements', []):
         if el.get('type') == 'way' and 'geometry' in el:
             pts = [[pt['lat'], pt['lon']] for pt in el['geometry']]
             if len(pts) >= 2:
                 ways.append(pts)
+        elif el.get('type') == 'node' and 'tags' in el:
+            tags = el['tags']
+            name = tags.get('name')
+            if name:
+                pois.append({
+                    'lat': el['lat'],
+                    'lon': el['lon'],
+                    'name': name,
+                    'category': categorize_poi(tags),
+                })
 
     out = {
         'origin_lat': lat,
         'origin_lon': lon,
         'radius_m': args.radius,
         'ways': ways,
+        'pois': pois,
     }
     with open(args.out, 'w') as f:
         json.dump(out, f)
 
-    print(f"Saved {len(ways)} road segments to {args.out}")
+    print(f"Saved {len(ways)} road segments and {len(pois)} named places to {args.out}")
     print("Copy this file next to zombie_cyberdeck.py on the Pi -- "
           "the game will load it automatically and needs no internet from here on.")
 
