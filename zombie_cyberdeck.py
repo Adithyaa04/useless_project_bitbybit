@@ -34,8 +34,10 @@ SPAWN_MAX_M = 90
 MAP_LINE_STEP_CAP = 100     # max interpolation steps per road segment (perf safety cap)
 POI_CALLOUT_RADIUS_M = 30   # how close you need to be for a place's name to show in the status bar
 
-# category -> (single-char marker, curses color pair). Color pairs are set up
-# in main(); 5-9 are POI-specific so they read differently from roads/zombies.
+# category -> (fallback marker char, curses color pair). The marker char is now
+# only a fallback (unused by draw_pois, kept for reference/tools); on the map
+# POIs are drawn as their actual name, colored per category. Color pairs are
+# set up in main(); 5-9 are POI-specific so they read differently from roads/zombies.
 POI_STYLE = {
     'school':  ('S', 5),
     'worship': ('C', 6),
@@ -200,13 +202,23 @@ def draw_map(stdscr, segments, player_x, player_y, cx, cy, max_x, max_y):
 
 
 def draw_pois(stdscr, pois, player_x, player_y, cx, cy, max_x, max_y):
-    """Draws named points of interest (schools, churches, shops...) as single
-    labeled markers, mapscii-style. Just point placement, same cost as a zombie."""
+    """Draws named points of interest (schools, churches, shops...) with their
+    actual name printed on the map, colored by category, instead of a single
+    letter marker. Names are truncated to whatever width is left on that row
+    so they never wrap off-screen. Same cost as before -- just point placement
+    plus a bounded string write."""
     for poi in pois:
         gx, gy = world_to_screen(poi['x'], poi['y'], player_x, player_y, cx, cy)
         if 0 <= gy < max_y - 1 and 0 <= gx < max_x:
-            char, pair = POI_STYLE.get(poi['category'], POI_DEFAULT_STYLE)
-            stdscr.addstr(gy, gx, char, curses.color_pair(pair) | curses.A_BOLD)
+            _, pair = POI_STYLE.get(poi['category'], POI_DEFAULT_STYLE)
+            avail = max_x - gx
+            if avail <= 0:
+                continue
+            label = poi['name'][:avail]
+            try:
+                stdscr.addstr(gy, gx, label, curses.color_pair(pair) | curses.A_BOLD)
+            except curses.error:
+                pass  # edge-of-screen curses quirk, harmless to skip a frame's label
 
 
 def nearest_poi_name(px, py, pois, max_dist=POI_CALLOUT_RADIUS_M):
