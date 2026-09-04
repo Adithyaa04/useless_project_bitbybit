@@ -15,6 +15,7 @@ Dependencies (only needed for real GPS mode):
 
 import argparse
 import curses
+import json
 import math
 import random
 import time
@@ -30,9 +31,7 @@ TICK_HZ = 4                 # game update rate
 SPAWN_MIN_M = 40            # zombies spawn this far from you at minimum
 SPAWN_MAX_M = 90
 
-GRID_SPACING_M = 15         # spacing of the background reference grid, in meters
-TRAIL_MIN_STEP_M = 2.0      # drop a breadcrumb every time you move at least this far
-TRAIL_MAX_POINTS = 300      # cap so it doesn't grow forever on a long walk
+MAP_LINE_STEP_CAP = 100     # max interpolation steps per road segment (perf safety cap)
 
 
 # ---------------- Coordinate helpers ----------------
@@ -43,6 +42,27 @@ def latlon_to_local(lat, lon, lat0, lon0):
     x = math.radians(lon - lon0) * R * math.cos(math.radians(lat0))
     y = math.radians(lat - lat0) * R
     return x, y
+
+
+# ---------------- Offline map data (from fetch_map.py) ----------------
+def load_map(path, fallback_lat, fallback_lon):
+    """Loads the pre-fetched road data. Returns (origin_lat, origin_lon, segments).
+    segments is a flat list of ((x1,y1),(x2,y2)) tuples in local meters, already
+    projected -- so per-frame drawing is just arithmetic, nothing heavy."""
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return fallback_lat, fallback_lon, []
+
+    origin_lat = data['origin_lat']
+    origin_lon = data['origin_lon']
+    segments = []
+    for way in data.get('ways', []):
+        pts = [latlon_to_local(lat, lon, origin_lat, origin_lon) for lat, lon in way]
+        for i in range(len(pts) - 1):
+            segments.append((pts[i], pts[i + 1]))
+    return origin_lat, origin_lon, segments
 
 
 # ---------------- GPS sources ----------------
@@ -131,51 +151,36 @@ def world_to_screen(wx, wy, player_x, player_y, cx, cy):
     return gx, gy
 
 
-def draw_grid(stdscr, player_x, player_y, cx, cy, max_x, max_y):
-    """Draws dots at fixed world-space intervals. Because these are anchored
-    to absolute coordinates (not to the player), they visibly scroll past
-    as you move -- that's what actually reads as 'I am walking'."""
-    half_w_m = (max_x / 2 + 1) * SCALE_M_PER_CELL
-    half_h_m = (max_y / 2 + 1) * SCALE_M_PER_CELL
+def draw_map(stdscr, segments, player_x, player_y, cx, cy, max_x, max_y):
+    """Draws the offline road data as '#' characters. Cheap: it's just line
+    interpolation between two already-projected points, no per-frame geometry
+    work and no network/file access -- fine for a Pi 3 at a few Hz."""
+    margin = 5
+    for (x1, y1), (x2, y2) in segments:
+        gx1, gy1 = world_to_screen(x1, y1, player_x, player_y, cx, cy)
+        gx2, gy2 = world_to_screen(x2, y2, player_x, player_y, cx, cy)
 
-    start_x = math.floor((player_x - half_w_m) / GRID_SPACING_M) * GRID_SPACING_M
-    end_x = player_x + half_w_m
-    start_y = math.floor((player_y - half_h_m) / GRID_SPACING_M) * GRID_SPACING_M
-    end_y = player_y + half_h_m
+        # skip segments nowhere near the visible screen
+        if (gx1 < -margin and gx2 < -margin) or (gx1 > max_x + margin and gx2 > max_x + margin):
+            continue
+        if (gy1 < -margin and gy2 < -margin) or (gy1 > max_y + margin and gy2 > max_y + margin):
+            continue
 
-    wx = start_x
-    while wx <= end_x:
-        wy = start_y
-        while wy <= end_y:
-            gx, gy = world_to_screen(wx, wy, player_x, player_y, cx, cy)
+        steps = min(max(abs(gx2 - gx1), abs(gy2 - gy1), 1), MAP_LINE_STEP_CAP)
+        for i in range(steps + 1):
+            t = i / steps
+            gx = round(gx1 + (gx2 - gx1) * t)
+            gy = round(gy1 + (gy2 - gy1) * t)
             if 0 <= gy < max_y - 1 and 0 <= gx < max_x:
-                stdscr.addstr(gy, gx, '.', curses.color_pair(4))
-            wy += GRID_SPACING_M
-        wx += GRID_SPACING_M
+                stdscr.addstr(gy, gx, '#', curses.color_pair(4))
 
 
-def draw_trail(stdscr, trail, player_x, player_y, cx, cy, max_x, max_y):
-    for wx, wy in trail:
-        gx, gy = world_to_screen(wx, wy, player_x, player_y, cx, cy)
-        if 0 <= gy < max_y - 1 and 0 <= gx < max_x:
-            stdscr.addstr(gy, gx, '\u00b7', curses.color_pair(4))  # middle dot
-
-
-def draw_compass(stdscr, cx, cy, max_x, max_y):
-    stdscr.addstr(0, max(0, cx), 'N', curses.color_pair(3) | curses.A_DIM)
-    stdscr.addstr(min(max_y - 2, max_y - 2), max(0, cx), 'S', curses.color_pair(3) | curses.A_DIM)
-    stdscr.addstr(cy, 0, 'W', curses.color_pair(3) | curses.A_DIM)
-    stdscr.addstr(cy, max_x - 1, 'E', curses.color_pair(3) | curses.A_DIM)
-
-
-def render(stdscr, player_x, player_y, zombies, trail, status=""):
+def render(stdscr, player_x, player_y, zombies, segments, status=""):
     stdscr.erase()
     max_y, max_x = stdscr.getmaxyx()
     cx, cy = max_x // 2, max_y // 2
 
-    draw_grid(stdscr, player_x, player_y, cx, cy, max_x, max_y)
-    draw_trail(stdscr, trail, player_x, player_y, cx, cy, max_x, max_y)
-    draw_compass(stdscr, cx, cy, max_x, max_y)
+    draw_map(stdscr, segments, player_x, player_y, cx, cy, max_x, max_y)
 
     stdscr.addstr(cy, cx, '@', curses.color_pair(1) | curses.A_BOLD)
 
@@ -210,10 +215,25 @@ def main(stdscr, args):
     curses.start_color()
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)   # you
     curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)     # zombies / death
-    curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)   # status bar / compass
-    curses.init_pair(4, curses.COLOR_CYAN, curses.COLOR_BLACK)    # grid / trail (background)
+    curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)   # status bar
+    curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # map roads (background)
 
-    gps = SimulatedGPS() if args.sim else SerialGPS(args.gps, args.baud)
+    # Load the pre-fetched road data (see fetch_map.py). Its origin_lat/lon
+    # become the fixed coordinate frame for this whole session, so the map
+    # and your live GPS position always line up.
+    map_origin_lat, map_origin_lon, segments = load_map(
+        args.map, fallback_lat=10.0, fallback_lon=76.3
+    )
+    if not segments:
+        stdscr.addstr(0, 0, f"No map data found at '{args.map}' -- playing with a blank "
+                             f"background. Run fetch_map.py first for a map.")
+        stdscr.refresh()
+        time.sleep(1.5)
+
+    if args.sim:
+        gps = SimulatedGPS(start_lat=map_origin_lat, start_lon=map_origin_lon)
+    else:
+        gps = SerialGPS(args.gps, args.baud)
 
     stdscr.addstr(0, 0, "Waiting for GPS fix...")
     stdscr.refresh()
@@ -222,7 +242,7 @@ def main(stdscr, args):
             break  # simulated GPS has a fix immediately
         time.sleep(0.5)
 
-    origin_lat, origin_lon = gps.get()
+    origin_lat, origin_lon = map_origin_lat, map_origin_lon
 
     zombies = []
     for _ in range(ZOMBIE_COUNT):
@@ -232,8 +252,6 @@ def main(stdscr, args):
 
     dt = 1.0 / TICK_HZ
     last_time = time.time()
-    trail = []
-    last_trail_pos = None
 
     while True:
         now = time.time()
@@ -256,11 +274,6 @@ def main(stdscr, args):
             continue
         px, py = latlon_to_local(lat, lon, origin_lat, origin_lon)
 
-        if last_trail_pos is None or math.hypot(px - last_trail_pos[0], py - last_trail_pos[1]) >= TRAIL_MIN_STEP_M:
-            trail.append((px, py))
-            trail = trail[-TRAIL_MAX_POINTS:]
-            last_trail_pos = (px, py)
-
         min_dist = float('inf')
         for z in zombies:
             z.step(px, py, dt)
@@ -268,7 +281,7 @@ def main(stdscr, args):
 
         status = (f"nearest: {min_dist:5.1f}m  zombies: {len(zombies)}  "
                   f"({'wasd to move, ' if args.sim else ''}q=quit)")
-        render(stdscr, px, py, zombies, trail, status)
+        render(stdscr, px, py, zombies, segments, status)
 
         if min_dist <= CATCH_RADIUS_M:
             death_screen(stdscr)
@@ -281,5 +294,7 @@ if __name__ == '__main__':
                          help='use keyboard-simulated GPS (WASD) for indoor testing')
     parser.add_argument('--gps', default='/dev/ttyS0', help='serial port for real GPS module')
     parser.add_argument('--baud', type=int, default=9600)
+    parser.add_argument('--map', default='map_data.json',
+                         help='path to the offline map file produced by fetch_map.py')
     args = parser.parse_args()
     curses.wrapper(main, args)
