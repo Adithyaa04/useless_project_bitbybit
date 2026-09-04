@@ -26,11 +26,11 @@ We made a hand-held Cyber Deck using Raspberry Pi, and since your street is a li
 ## Technical Details
 ### Technologies/Components Used
 For Software:
-curses (terminal rendering engine for the TFT display)
-argparse, json, math, random, threading (standard library)
-pynmea2 (parses NMEA GPS sentences)
-pyserial (reads the GPS module over UART)
-OpenStreetMap Overpass API (source of real road + point-of-interest data)
+- curses (terminal rendering engine for the TFT display)
+- argparse, json, math, random, threading (standard library)
+- pynmea2 (parses NMEA GPS sentences)
+- pyserial (reads the GPS module over UART)
+- OpenStreetMap Overpass API (source of real road + point-of-interest data)
 
 For Hardware:
 - [List main components]
@@ -40,11 +40,11 @@ For Hardware:
 ### Implementation
 For Software:
 # Installation
-pip install pynmea2 pyserial --break-system-packages
+- pip install pynmea2 pyserial --break-system-packages
 
-# Run (indoor test, no GPS hardware needed)
-python3 fetch_map1.py --lat <your-lat> --lon <your-lon> --radius 300
-python3 zombie_cyberdeck.py --sim
+# Run
+- python3 fetch_map1.py --lat <your-lat> --lon <your-lon> --radius 300
+- python3 zombie_cyberdeck.py --sim
 
 # Run (for real, outdoors, with GPS wired up)
 
@@ -53,13 +53,13 @@ For Software:
 
 # Screenshots (Add at least 3)
 ![Screenshot1](Add screenshot 1 here with proper name)
-*Add caption explaining what this shows*
+First prototype for the application. just a human (green dot) and zombies(red) in a black background, and they can interact with eachother
 
 ![Screenshot2](Add screenshot 2 here with proper name)
-*Add caption explaining what this shows*
+LOC, integrating OpenStreetMap, pynmea2 pyserial and other modules necessary for the functioning
 
 ![Screenshot3](Add screenshot 3 here with proper name)
-*Add caption explaining what this shows*
+Better output model, which can show the names of establishments and help the human to shelter
 
 # Diagrams
 ![Workflow](Add your workflow/architecture diagram here)
