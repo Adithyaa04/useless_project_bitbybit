@@ -15,13 +15,13 @@
 
 
 ### Project Description
-[2-3 lines about what your project does]
+A hardware-based zombie chase game that runs on a handheld Raspberry Pi terminal. Run for your life as zombies chase you!!
 
 ### The Problem (that doesn't exist)
-[What ridiculous problem are you solving?]
+Zombie apocalypses are real. Ofcourse EVERYBODY need to outrun the undead through their own neighborhood on a Tuesday evening. Humanity remains criminally under-equipped to know exactly how close a horde of zombies currently is, in meters, while jogging past the local chaya kada.
 
 ### The Solution (that nobody asked for)
-[How are you solving it? Keep it fun!]
+We made a hand-held Cyber Deck using Raspberry Pi, and since your street is a live zombie-infested map, and you are the controller. No joystick, no WASD, you outrun the zombies by, well, outrunning them.
 
 ## Technical Details
 ### Technologies/Components Used
