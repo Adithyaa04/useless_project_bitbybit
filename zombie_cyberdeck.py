@@ -3,14 +3,16 @@
 Zombie Cyberdeck - GPS zombie-chase game for a terminal on a small TFT display.
 Designed for Raspberry Pi 3 running Debian in console mode on a 3.5" TFT.
 
-Run for real, with a NMEA GPS module on serial:
-    python3 zombie_cyberdeck.py --gps /dev/ttyS0 --baud 9600
+Run for real, with a NMEA GPS module bit-banged on GPIO16 (used when the
+hardware UART pins 8/10 are already taken, e.g. by a TFT display):
+    python3 zombie_cyberdeck.py --gpio 16 --baud 9600
+    (requires pigpiod running: sudo systemctl start pigpiod)
 
 Run indoors for testing, with WASD-simulated GPS:
     python3 zombie_cyberdeck.py --sim
 
 Dependencies (only needed for real GPS mode):
-    pip install pynmea2 pyserial
+    pip install pynmea2 pigpio
 """
 
 import argparse
@@ -127,6 +129,55 @@ class SerialGPS(GPSSource):
                             self.lon = msg.longitude
             except Exception:
                 continue  # bad/partial sentence, just try the next line
+
+
+class BitBangGPS(GPSSource):
+    """Reads NMEA sentences from a GPS TX line via pigpio's software serial
+    reader, for wiring the GPS to a plain GPIO pin instead of the hardware
+    UART -- e.g. GPIO16 (physical pin 36) when pins 8/10 are already used by
+    a display. Only needs the module's TX wire; the game never writes back
+    to the GPS, so RX is left unconnected."""
+    def __init__(self, gpio, baud):
+        super().__init__()
+        import pigpio
+        self.pi = pigpio.pi()
+        if not self.pi.connected:
+            raise RuntimeError("Can't connect to pigpiod -- is it running? "
+                                "(sudo systemctl start pigpiod)")
+        self.gpio = gpio
+        self.pi.set_mode(gpio, pigpio.INPUT)
+        self.pi.bb_serial_read_open(gpio, baud, 8)  # 8 data bits, matches NMEA
+
+        import pynmea2
+        self._pynmea2 = pynmea2
+        self._buf = b""
+        self.running = True
+        self.thread = threading.Thread(target=self._loop, daemon=True)
+        self.thread.start()
+
+    def _loop(self):
+        while self.running:
+            try:
+                count, data = self.pi.bb_serial_read(self.gpio)
+                if count:
+                    self._buf += data
+                    while b'\n' in self._buf:
+                        line, self._buf = self._buf.split(b'\n', 1)
+                        raw = line.decode('ascii', errors='replace').strip()
+                        if raw.startswith('$GPGGA') or raw.startswith('$GNGGA'):
+                            msg = self._pynmea2.parse(raw)
+                            if msg.gps_qual and int(msg.gps_qual) > 0:
+                                with self.lock:
+                                    self.lat = msg.latitude
+                                    self.lon = msg.longitude
+                time.sleep(0.05)  # ~20Hz poll, plenty for a 1Hz GPS update rate
+            except Exception:
+                continue  # bad/partial sentence, just try the next read
+
+    def close(self):
+        self.running = False
+        self.pi.bb_serial_read_close(self.gpio)
+        self.pi.stop()
 
 
 class SimulatedGPS(GPSSource):
@@ -294,7 +345,7 @@ def main(stdscr, args):
     if args.sim:
         gps = SimulatedGPS(start_lat=map_origin_lat, start_lon=map_origin_lon)
     else:
-        gps = SerialGPS(args.gps, args.baud)
+        gps = BitBangGPS(args.gpio, args.baud)
 
     stdscr.addstr(0, 0, "Waiting for GPS fix...")
     stdscr.refresh()
@@ -355,7 +406,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--sim', action='store_true',
                          help='use keyboard-simulated GPS (WASD) for indoor testing')
-    parser.add_argument('--gps', default='/dev/ttyS0', help='serial port for real GPS module')
+    parser.add_argument('--gpio', type=int, default=16,
+                         help='GPIO pin (BCM numbering) wired to the GPS TX line, read via pigpio bit-bang serial')
     parser.add_argument('--baud', type=int, default=9600)
     parser.add_argument('--map', default='map_data.json',
                          help='path to the offline map file produced by fetch_map.py')
