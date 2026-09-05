@@ -92,8 +92,8 @@ For Hardware:
 
 ### Project Demo
 # Video
-[Add your demo video link here]
-*Explain what the video demonstrates*
+[[Add your demo video link here](https://drive.google.com/file/d/1eoE_j6qld39hfe-Od8CWFa1EvSzYB2Pg/view?usp=drivesdk)]
+
 
 
 ---
