@@ -2,7 +2,7 @@
 
 
 
-# [Project Name] 🎯
+# [Zombie Deck] 🎯
 
 
 ## Basic Details
@@ -33,9 +33,16 @@ For Software:
 - OpenStreetMap Overpass API (source of real road + point-of-interest data)
 
 For Hardware:
-- [List main components]
-- [List specifications]
-- [List tools required]
+- Raspberry Pi 3 (Model B/B+) — running Debian, headless console mode
+- 3.5" TFT display — acts as the game screen, connected via SPI (using the Pi's GPIO header) or HDMI depending on model
+- NEO-6M GPS module — provides live position when running in wired mode
+- Portable power bank (5V USB) — for untethered outdoor use
+- Jumper wires (female-to-female, for GPIO connections)
+- MicroSD card (8GB+) — for the Debian OS
+- NEO-6M GPS: UART/NMEA 0183 output, 9600 baud default, 3.3–5V logic tolerant, external ceramic patch antenna
+- Wiring used: GPS GND → Pi physical pin 34, GPS TX → Pi physical pin 36 (GPIO16, bit-banged serial via pigpio), GPS VCC → Pi 3.3V/5V rail — chosen because pins 8/10 (the hardware UART) were already occupied by the TFT
+- Power bank: 5V/2A+ output recommended for stable Pi 3 operation under load
+
 
 ### Implementation
 For Software:
@@ -61,10 +68,6 @@ LOC, integrating OpenStreetMap, pynmea2 pyserial and other modules necessary for
 
 ![Screenshot3](./screenshot2.jpeg)
 Better output model, which can show the names of establishments and help the human to shelter
-
-# Diagrams
-![Workflow](Add your workflow/architecture diagram here)
-*Add caption explaining your workflow*
 
 For Hardware:
 
