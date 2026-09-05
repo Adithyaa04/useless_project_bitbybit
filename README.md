@@ -82,24 +82,19 @@ For Hardware:
 ![Components](./component.jpeg)
 
 
-![Build](Add photos of build process here)
-*Explain the build steps*
+![Build](./op1.jpeg)
+![Build](./op2.jpeg)
+![Build](./op3.jpeg)
 
-![Final](Add photo of final product here)
-*Explain the final build*
+
+![Final](./op4.jpeg)
+
 
 ### Project Demo
 # Video
 [Add your demo video link here]
 *Explain what the video demonstrates*
 
-# Additional Demos
-[Add any extra demo materials/links]
-
-## Team Contributions
-- [Name 1]: [Specific contributions]
-- [Name 2]: [Specific contributions]
-- [Name 3]: [Specific contributions]
 
 ---
 Made with ❤️ at TinkerHub Useless Projects 
