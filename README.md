@@ -73,23 +73,28 @@ For Software:
 
 First prototype for the application. just a human (green dot) and zombies(red) in a black background, and they can interact with eachother
 
-![Screenshot2](./screenshot3.jpeg)
+![Screenshot2]<img width="500" height="300" src="./screenshot3.jpeg" alt="Screenshot2">
+
 LOC, integrating OpenStreetMap, pynmea2 pyserial and other modules necessary for the functioning
 
-![Screenshot3](./screenshot2.jpeg)
+![Screenshot3]<img width="500" height="300" src="./screenshot2.jpeg" alt="Screenshot3">
+
 Better output model, which can show the names of establishments and help the human to shelter
 
 For Hardware:
 
 # Schematic & Circuit
-![Circuit](./circuit.jpeg)
+![Circuit]<img width="500" height="300" src="./circuit.jpeg" alt="Screenshot1">
 
 
-![Schematic](./schematic.jpeg)
+
+![Schematic]<img width="500" height="300" src="./schematic.jpeg" alt="Screenshot2">
+
 
 
 # Build Photos
-![Components](./component.jpeg)
+![Components]<img width="500" height="300" src="./component.jpeg" alt="Screenshot3">
+
 
 
 ![Build](./op1.jpeg)
