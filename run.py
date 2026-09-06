@@ -13,8 +13,10 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # --- paths — works whether run.py is at project root OR inside app/ ---
@@ -48,24 +50,38 @@ RST = "\033[0m"
 
 def banner():
     print(f"""{GRN}{BOLD}
-  ███████╗ ██████╗ ███╗   ███╗██████╗ ██╗███████╗   ██████╗ ███████╗ ██████╗██╗  ██╗
-  ╚══███╔╝██╔═══██╗████╗ ████║██╔══██╗██║██╔════╝   ██╔══██╗██╔════╝██╔════╝██║ ██╔╝
-    ███╔╝ ██║   ██║██╔████╔██║██████╔╝██║█████╗     ██║  ██║█████╗  ██║     █████╔╝ 
-   ███╔╝  ██║   ██║██║╚██╔╝██║██╔══██╗██║██╔══╝     ██║  ██║██╔══╝  ██║     ██╔═██╗ 
-  ███████╗╚██████╔╝██║ ╚═╝ ██║██████╔╝██║███████╗   ██████╔╝███████╗╚██████╗██║  ██╗
-  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═════╝ ╚═╝╚══════╝   ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝
-{RST}{DIM}  Bit By Bit — Run for your life. The street is the map.{RST}
+  ███████╗         ██████╗ ███████╗ ██████╗██╗  ██╗
+  ╚══███╔╝         ██╔══██╗██╔════╝██╔════╝██║ ██╔╝
+    ███╔╝  █████╗  ██║  ██║█████╗  ██║     █████╔╝ 
+   ███╔╝   ╚════╝  ██║  ██║██╔══╝  ██║     ██╔═██╗ 
+  ███████╗        ██████╔╝███████╗╚██████╗██║  ██╗
+  ╚══════╝        ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝
+{RST}{YEL}{BOLD}                    Z  —  D E C K{RST}{DIM}  — Bit By Bit — Run for your life.{RST}
 """)
+    # linger so the TFT / terminal actually reads the logo
+    time.sleep(2.2)
 
 def run_cmd(cmd, check=True):
     print(f"{DIM}$ {' '.join(cmd)}{RST}")
     return subprocess.run(cmd, check=check)
 
+def _install_cmd(pkgs):
+    """Return best install command: prefer uv if available, else pip."""
+    if shutil.which("uv"):
+        # uv is 10-100x faster; --system installs to system env like pip --break-system-packages
+        return ["uv", "pip", "install", "--system", *pkgs]
+    if shutil.which("pip") or shutil.which("pip3"):
+        return [sys.executable, "-m", "pip", "install", "--break-system-packages", *pkgs]
+    # last resort: try pip anyway
+    return [sys.executable, "-m", "pip", "install", "--break-system-packages", *pkgs]
+
 def ensure_deps(skip_install=False):
-    """Install required pip deps if missing."""
+    """Install required deps if missing — uses uv if present, else pip."""
     if skip_install:
         return
     print(f"\n{BOLD}[1/3] Checking dependencies...{RST}")
+    tool = "uv" if shutil.which("uv") else "pip"
+    print(f"  {DIM}installer: {tool}{RST}")
     deps = ["pynmea2", "pyserial"]
     # pigpio only needed for GPIO bit-bang mode, but install anyway for convenience
     try:
@@ -81,21 +97,31 @@ def ensure_deps(skip_install=False):
     except ImportError:
         pass
 
-    print(f"  Installing {', '.join(deps)} ...")
-    # --break-system-packages needed on Debian Pi (PEP 668)
-    cmd = [sys.executable, "-m", "pip", "install", "--break-system-packages", "pynmea2", "pyserial"]
+    print(f"  Installing {', '.join(deps)} via {tool} ...")
+    cmd = _install_cmd(deps)
     try:
         run_cmd(cmd)
-        print(f"  {GRN}✓ deps installed{RST}")
+        print(f"  {GRN}✓ deps installed via {tool}{RST}")
     except subprocess.CalledProcessError:
-        print(f"  {RED}pip install failed — trying without --break-system-packages{RST}")
-        run_cmd([sys.executable, "-m", "pip", "install", "pynmea2", "pyserial"], check=False)
+        # uv failed -> fallback to pip, pip with --break failed -> without
+        if tool == "uv":
+            print(f"  {YEL}uv failed, falling back to pip...{RST}")
+            fallback = [sys.executable, "-m", "pip", "install", "--break-system-packages", *deps]
+            try:
+                run_cmd(fallback)
+                print(f"  {GRN}✓ deps installed via pip{RST}")
+            except subprocess.CalledProcessError:
+                run_cmd([sys.executable, "-m", "pip", "install", *deps], check=False)
+        else:
+            print(f"  {RED}pip install failed — trying without --break-system-packages{RST}")
+            run_cmd([sys.executable, "-m", "pip", "install", *deps], check=False)
 
     # optionally offer pigpio
     try:
         import pigpio  # noqa
     except ImportError:
-        print(f"  {DIM}Tip: for GPIO bit-bang GPS (GPIO16) also run: pip install pigpio --break-system-packages{RST}")
+        hint = "uv pip install --system pigpio" if shutil.which("uv") else "pip install --break-system-packages pigpio"
+        print(f"  {DIM}Tip: for GPIO bit-bang GPS (GPIO16) also run: {hint}{RST}")
 
 def ask_choice(prompt, options, default=None):
     """Prompt with numbered options. options = list of (key, label). Returns key."""
