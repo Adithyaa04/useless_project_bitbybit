@@ -36,35 +36,70 @@ def build_query(lat, lon, radius_m):
     [out:json][timeout:25];
     (
       way["highway"](around:{radius_m},{lat},{lon});
+      way["building"](around:{radius_m},{lat},{lon});
+      way["natural"="water"](around:{radius_m},{lat},{lon});
+      way["leisure"~"^(park|garden|playground|pitch)$"](around:{radius_m},{lat},{lon});
+      way["landuse"~"^(grass|forest|meadow|recreation_ground|village_green)$"](around:{radius_m},{lat},{lon});
       node["name"]["amenity"](around:{radius_m},{lat},{lon});
+      node["name"]["emergency"](around:{radius_m},{lat},{lon});
+      node["name"]["healthcare"](around:{radius_m},{lat},{lon});
       node["name"]["shop"](around:{radius_m},{lat},{lon});
       node["name"]["tourism"](around:{radius_m},{lat},{lon});
       node["name"]["leisure"](around:{radius_m},{lat},{lon});
+      node["name"]["office"](around:{radius_m},{lat},{lon});
+      node["name"]["craft"](around:{radius_m},{lat},{lon});
+      node["name"]["historic"](around:{radius_m},{lat},{lon});
+      node["name"]["natural"](around:{radius_m},{lat},{lon});
     );
     out geom;
     """
 
 
-# Maps an OSM tag value (amenity/shop/tourism/leisure) to a short category
+# Maps an OSM tag value (amenity/shop/tourism/leisure/...) to a short category
 # label we store in the map file. Keeps the game's marker/color logic simple.
+# Schema v2 additions: supply (groceries/markets), civic (offices/admin),
+# culture (museums/sights), shelter (hotels/hostels -- hide here!), water.
 POI_TAG_TO_CATEGORY = {
     'school': 'school', 'college': 'school', 'university': 'school', 'kindergarten': 'school',
     'place_of_worship': 'worship',
     'hospital': 'hospital', 'clinic': 'hospital', 'pharmacy': 'hospital', 'doctors': 'hospital',
+    'dentist': 'hospital', 'ambulance_station': 'hospital',
     'restaurant': 'food', 'cafe': 'food', 'fast_food': 'food', 'bar': 'food', 'pub': 'food',
-    'park': 'park', 'garden': 'park', 'playground': 'park',
-    'fuel': 'fuel',
-    'bank': 'bank', 'atm': 'bank',
+    'food_court': 'food', 'ice_cream': 'food',
+    'supermarket': 'supply', 'convenience': 'supply', 'mall': 'supply',
+    'department_store': 'supply', 'marketplace': 'supply', 'greengrocer': 'supply',
+    'bakery': 'supply', 'butcher': 'supply', 'beverages': 'supply', 'kiosk': 'supply',
+    'newsagent': 'supply', 'hardware': 'supply',
+    'park': 'park', 'garden': 'park', 'playground': 'park', 'pitch': 'park',
+    'fuel': 'fuel', 'charging': 'fuel',
+    'bank': 'bank', 'atm': 'bank', 'bureau_de_change': 'bank',
     'police': 'police', 'fire_station': 'police',
+    'government': 'civic', 'townhall': 'civic', 'community_centre': 'civic',
+    'courthouse': 'civic', 'embassy': 'civic',
+    'museum': 'culture', 'gallery': 'culture', 'theatre': 'culture', 'cinema': 'culture',
+    'library': 'culture', 'arts_centre': 'culture', 'attraction': 'culture',
+    'viewpoint': 'culture', 'artwork': 'culture', 'historic': 'culture',
+    'hotel': 'shelter', 'hostel': 'shelter', 'guest_house': 'shelter', 'motel': 'shelter',
+    'water': 'water', 'spring': 'water',
 }
 
 
 def categorize_poi(tags):
-    for key in ('amenity', 'shop', 'tourism', 'leisure'):
+    for key in ('amenity', 'emergency', 'healthcare', 'shop', 'tourism', 'leisure',
+                'office', 'craft', 'historic', 'natural'):
         val = tags.get(key)
         if val:
+            if key == 'office':
+                return 'civic'  # any office is civic infrastructure
             return POI_TAG_TO_CATEGORY.get(val, key)  # fall back to the raw tag key
     return 'other'
+
+
+def poi_address(tags):
+    """'addr:housenumber, addr:street' if OSM has either part."""
+    num, street = tags.get('addr:housenumber', ''), tags.get('addr:street', '')
+    addr = ', '.join(p for p in (num, street) if p)
+    return addr or None
 
 
 def fetch(lat, lon, radius_m):
@@ -116,34 +151,60 @@ def main():
     raw = fetch(lat, lon, args.radius)
 
     ways = []
+    roads = []  # v2: same geometry + OSM name/highway tags
+    areas = []  # v2: building / water / green polygons
     pois = []
     for el in raw.get('elements', []):
         if el.get('type') == 'way' and 'geometry' in el:
             pts = [[pt['lat'], pt['lon']] for pt in el['geometry']]
-            if len(pts) >= 2:
-                ways.append(pts)
+            if len(pts) < 2:
+                continue
+            tags = el.get('tags', {})
+            highway = tags.get('highway', '')
+            if highway:
+                ways.append(pts)  # v1 shape, unchanged for old readers
+                roads.append({'name': tags.get('name'), 'highway': highway, 'pts': pts})
+            elif tags.get('building'):
+                if len(areas) < 2000:
+                    areas.append({'kind': 'building', 'pts': pts})
+            elif tags.get('natural') == 'water':
+                areas.append({'kind': 'water', 'name': tags.get('name'), 'pts': pts})
+            elif tags.get('leisure') in ('park', 'garden', 'playground', 'pitch') or \
+                    tags.get('landuse') in ('grass', 'forest', 'meadow',
+                                            'recreation_ground', 'village_green'):
+                areas.append({'kind': 'green', 'name': tags.get('name'), 'pts': pts})
         elif el.get('type') == 'node' and 'tags' in el:
             tags = el['tags']
             name = tags.get('name')
             if name:
-                pois.append({
+                poi = {
                     'lat': el['lat'],
                     'lon': el['lon'],
                     'name': name,
                     'category': categorize_poi(tags),
-                })
+                }
+                if tags.get('opening_hours'):
+                    poi['hours'] = tags['opening_hours']
+                addr = poi_address(tags)
+                if addr:
+                    poi['addr'] = addr
+                pois.append(poi)
 
     out = {
+        'version': 2,
         'origin_lat': lat,
         'origin_lon': lon,
         'radius_m': args.radius,
         'ways': ways,
         'pois': pois,
+        'roads': roads,
+        'areas': areas,
     }
     with open(args.out, 'w') as f:
         json.dump(out, f)
 
-    print(f"Saved {len(ways)} road segments and {len(pois)} named places to {args.out}")
+    print(f"Saved {len(roads)} roads ({len(ways)} legacy ways), "
+          f"{len(areas)} areas and {len(pois)} named places to {args.out}")
     print("Copy this file next to zombie_cyberdeck.py on the Pi -- "
           "the game will load it automatically and needs no internet from here on.")
 

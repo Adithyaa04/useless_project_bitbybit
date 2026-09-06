@@ -82,8 +82,8 @@ fn banner() {
   ╚══███╔╝         ██╔══██╗██╔════╝██╔════╝██║ ██╔╝
     ███╔╝  █████╗  ██║  ██║█████╗  ██║     █████╔╝
    ███╔╝   ╚════╝  ██║  ██║██╔══╝  ██║     ██╔═██╗
-  ███████╗        ██████╔╝███████╗╚██████╗██║  ██╗
-  ╚══════╝        ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝
+  ███████╗         ██████╔╝███████╗╚██████╗██║  ██╗
+  ╚══════╝         ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝
 {RST}{YEL}{BOLD}                    Z  —  D E C K{RST}{DIM}  — Bit By Bit — Run for your life.{RST}"
     );
     // Linger so the TFT / terminal actually reads the logo.
@@ -259,13 +259,21 @@ fn ask_str(prompt: &str, default: &str) -> String {
 fn map_summary(path: &Path) -> Option<String> {
     let text = std::fs::read_to_string(path).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let count = |k: &str| {
+        v.get(k)
+            .and_then(|a| a.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0)
+    };
     Some(format!(
-        "origin {},{} radius {}m, {} ways, {} POIs",
+        "origin {},{} radius {}m, {} ways, {} POIs, {} roads, {} areas",
         v.get("origin_lat")?,
         v.get("origin_lon")?,
         v.get("radius_m")?,
-        v.get("ways")?.as_array()?.len(),
-        v.get("pois")?.as_array()?.len(),
+        count("ways"),
+        count("pois"),
+        count("roads"),
+        count("areas"),
     ))
 }
 

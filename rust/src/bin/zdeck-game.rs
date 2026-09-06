@@ -38,7 +38,14 @@ use ratatui::{
     Terminal,
 };
 
-use zdeck::{config::*, geo::*, map::MapData, proto::GpsFix, rng::XorShift64, zombie::Zombie};
+use zdeck::{
+    config::*,
+    geo::*,
+    map::{fill_poly, AreaKind, MapData, Segment, Viewport},
+    proto::GpsFix,
+    rng::XorShift64,
+    zombie::{Horde, HordeCfg},
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -76,6 +83,21 @@ struct Args {
     /// Ticks to run in headless mode
     #[arg(long, default_value_t = 40)]
     ticks: u64,
+    /// Min zombies: reinforcements spawn while below this
+    #[arg(long, default_value_t = MIN_ZOMBIES)]
+    min_zombies: usize,
+    /// Max concurrent zombies (hard cap)
+    #[arg(long, default_value_t = MAX_ZOMBIES)]
+    max_zombies: usize,
+    /// Zombies farther than this are out of range (meters)
+    #[arg(long, default_value_t = DESPAWN_RANGE_M)]
+    despawn_range: f64,
+    /// Out-of-range zombies despawn after this many seconds away
+    #[arg(long, default_value_t = DESPAWN_AFTER_S)]
+    despawn_after: f64,
+    /// Max reinforcement spawns per second
+    #[arg(long, default_value_t = MAX_SPAWN_PER_S)]
+    spawn_per_s: f64,
 }
 
 // ---------------------------------------------------------------- TUI guard
@@ -107,6 +129,8 @@ impl Drop for Tui {
 /// Cell attribute = curses color-pair number from the Python original, so map
 /// styling stays familiar: 1 player, 2 zombie/alert, 3 status, 4 roads,
 /// 5 school, 6 worship, 7 food, 8 park/other. 0 = background.
+/// v2 additions: 9 water, 10 buildings, 11 green areas, 12 arterial roads,
+/// 13 supply POIs, 14 culture POIs, 15 shelter POIs.
 fn style_for(attr: u8) -> Style {
     match attr {
         1 => Style::default()
@@ -126,9 +150,26 @@ fn style_for(attr: u8) -> Style {
         7 => Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::BOLD),
-        _ => Style::default()
+        8 => Style::default()
             .fg(Color::Blue)
             .add_modifier(Modifier::BOLD),
+        9 => Style::default()
+            .fg(Color::Blue)
+            .add_modifier(Modifier::BOLD),
+        10 => Style::default().fg(Color::Gray).add_modifier(Modifier::DIM),
+        11 => Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::DIM),
+        12 => Style::default()
+            .fg(Color::LightYellow)
+            .add_modifier(Modifier::BOLD),
+        13 => Style::default()
+            .fg(Color::LightGreen)
+            .add_modifier(Modifier::BOLD),
+        14 => Style::default()
+            .fg(Color::LightMagenta)
+            .add_modifier(Modifier::BOLD),
+        _ => Style::default().fg(Color::Cyan),
     }
 }
 
@@ -138,7 +179,11 @@ fn poi_attr(category: &str) -> u8 {
         "worship" => 6,
         "hospital" => 2,
         "food" => 7,
-        "fuel" | "bank" => 3,
+        "supply" => 13,
+        "culture" => 14,
+        "shelter" => 15,
+        "water" => 9,
+        "fuel" | "bank" | "civic" => 3,
         "police" => 2,
         _ => 8,
     }
@@ -215,47 +260,102 @@ fn draw(tui: &mut Tui, fb: &FrameBuf, status: &str) -> Result<()> {
     Ok(())
 }
 
-fn plot_world(fb: &mut FrameBuf, map: &MapData, px: f64, py: f64, zombies: &[Zombie]) {
-    let cx = fb.w as i32 / 2;
-    let cy = fb.h as i32 / 2;
+/// Max area-fill cells per frame (shared budget across all polygons).
+const FILL_BUDGET_PER_FRAME: usize = 1500;
+
+/// Draw one projected segment with capped interpolation (perf safety cap).
+fn draw_seg(fb: &mut FrameBuf, view: &Viewport, s: &Segment, ch: char, attr: u8) {
+    let (gx1, gy1) = world_to_screen(
+        s.x1,
+        s.y1,
+        view.player_x,
+        view.player_y,
+        view.cx,
+        view.cy,
+        SCALE_M_PER_CELL,
+    );
+    let (gx2, gy2) = world_to_screen(
+        s.x2,
+        s.y2,
+        view.player_x,
+        view.player_y,
+        view.cx,
+        view.cy,
+        SCALE_M_PER_CELL,
+    );
     let margin = 5;
     let max_x = fb.w as i32;
     let max_y = fb.h as i32 + 1; // +1: last grid row is second-to-last screen row
+    if (gx1 < -margin && gx2 < -margin) || (gx1 > max_x + margin && gx2 > max_x + margin) {
+        return;
+    }
+    if (gy1 < -margin && gy2 < -margin) || (gy1 > max_y + margin && gy2 > max_y + margin) {
+        return;
+    }
+    let steps = (gx2 - gx1)
+        .abs()
+        .max((gy2 - gy1).abs())
+        .clamp(1, MAP_LINE_STEP_CAP);
+    for i in 0..=steps {
+        let t = i as f64 / steps as f64;
+        let gx = (gx1 as f64 + (gx2 - gx1) as f64 * t).round() as i32;
+        let gy = (gy1 as f64 + (gy2 - gy1) as f64 * t).round() as i32;
+        fb.put(gx, gy, ch, attr);
+    }
+}
 
+fn plot_world(fb: &mut FrameBuf, map: &MapData, px: f64, py: f64, horde: &Horde) {
+    let view = Viewport {
+        player_x: px,
+        player_y: py,
+        cx: fb.w as i32 / 2,
+        cy: fb.h as i32 / 2,
+        scale_m_per_cell: SCALE_M_PER_CELL,
+        w: fb.w as i32,
+        h: fb.h as i32,
+    };
+
+    // Areas first (background): budgeted polygon fill.
+    let mut budget = FILL_BUDGET_PER_FRAME;
+    for area in &map.areas {
+        let (ch, attr) = match area.kind {
+            AreaKind::Water => ('~', 9),
+            AreaKind::Building => ('#', 10),
+            AreaKind::Green => (':', 11),
+        };
+        fill_poly(&area.poly, &view, &mut budget, |gx, gy| {
+            fb.put(gx, gy, ch, attr)
+        });
+        if budget == 0 {
+            break;
+        }
+    }
+
+    // Legacy (unnamed) road geometry, then typed roads (arterials brighter).
     for s in &map.segments {
-        let (gx1, gy1) = world_to_screen(s.x1, s.y1, px, py, cx, cy, SCALE_M_PER_CELL);
-        let (gx2, gy2) = world_to_screen(s.x2, s.y2, px, py, cx, cy, SCALE_M_PER_CELL);
-        if (gx1 < -margin && gx2 < -margin) || (gx1 > max_x + margin && gx2 > max_x + margin) {
-            continue;
-        }
-        if (gy1 < -margin && gy2 < -margin) || (gy1 > max_y + margin && gy2 > max_y + margin) {
-            continue;
-        }
-        let steps = (gx2 - gx1)
-            .abs()
-            .max((gy2 - gy1).abs())
-            .clamp(1, MAP_LINE_STEP_CAP);
-        for i in 0..=steps {
-            let t = i as f64 / steps as f64;
-            let gx = (gx1 as f64 + (gx2 - gx1) as f64 * t).round() as i32;
-            let gy = (gy1 as f64 + (gy2 - gy1) as f64 * t).round() as i32;
-            fb.put(gx, gy, '.', 4);
+        draw_seg(fb, &view, s, '.', 4);
+    }
+    for road in &map.roads {
+        let attr = if road.major { 12 } else { 4 };
+        for s in &road.segs {
+            draw_seg(fb, &view, s, '.', attr);
         }
     }
 
     for poi in &map.pois {
-        let (gx, gy) = world_to_screen(poi.x, poi.y, px, py, cx, cy, SCALE_M_PER_CELL);
+        let (gx, gy) = world_to_screen(poi.x, poi.y, px, py, view.cx, view.cy, SCALE_M_PER_CELL);
         let a = poi_attr(&poi.category);
         for (i, ch) in poi.name.chars().enumerate() {
             fb.put(gx + i as i32, gy, ch, a);
         }
     }
 
-    for z in zombies {
-        let (gx, gy) = world_to_screen(z.x, z.y, px, py, cx, cy, SCALE_M_PER_CELL);
+    for m in &horde.members {
+        let (gx, gy) =
+            world_to_screen(m.pos.x, m.pos.y, px, py, view.cx, view.cy, SCALE_M_PER_CELL);
         fb.put(gx, gy, 'Z', 2);
     }
-    fb.put(cx, cy, '@', 1);
+    fb.put(view.cx, view.cy, '@', 1);
 }
 
 fn death_screen(tui: &mut Tui) -> Result<()> {
@@ -323,16 +423,6 @@ fn feed_from_pipe(out: std::process::ChildStdout) -> Receiver<GpsFix> {
     rx
 }
 
-fn spawn_ring(rng: &mut XorShift64) -> Vec<Zombie> {
-    (0..ZOMBIE_COUNT)
-        .map(|_| {
-            let d = rng.range(SPAWN_MIN_M, SPAWN_MAX_M);
-            let b = rng.range(0.0, std::f64::consts::TAU);
-            Zombie::new(b.cos() * d, b.sin() * d)
-        })
-        .collect()
-}
-
 // ---------------------------------------------------------------- main
 
 fn main() -> Result<()> {
@@ -355,11 +445,13 @@ fn main() -> Result<()> {
         );
     } else if args.headless {
         println!(
-            "map: origin {},{} | {} segments, {} POIs",
+            "map: origin {},{} | {} segments, {} POIs, {} roads, {} areas",
             map.origin_lat,
             map.origin_lon,
             map.segments.len(),
-            map.pois.len()
+            map.pois.len(),
+            map.roads.len(),
+            map.areas.len()
         );
     }
 
@@ -421,7 +513,15 @@ fn main() -> Result<()> {
     } else {
         XorShift64::from_time()
     };
-    let mut zombies: Option<Vec<Zombie>> = None;
+    let mut horde: Option<Horde> = None;
+    let horde_cfg = HordeCfg {
+        min: args.min_zombies,
+        max: args.max_zombies.max(1),
+        despawn_range_m: args.despawn_range,
+        despawn_after_s: args.despawn_after.max(0.0),
+        max_spawn_per_s: args.spawn_per_s,
+        spawn_trigger_m: SPAWN_TRIGGER_M,
+    };
     let mut fix: Option<GpsFix> = None;
     let mut feed_dead = false;
 
@@ -495,33 +595,70 @@ fn main() -> Result<()> {
             continue;
         };
 
-        let zs = zombies.get_or_insert_with(|| spawn_ring(&mut rng));
+        // Lazily center the opening horde on the first real fix (the player
+        // may be far from the map origin on real hardware).
         let (px, py) = latlon_to_local(cur.lat, cur.lon, map.origin_lat, map.origin_lon);
+        let h = horde.get_or_insert_with(|| Horde::new(horde_cfg.clone(), &mut rng, px, py));
 
-        let mut min_dist = f64::INFINITY;
         let dt = 1.0 / TICK_HZ as f64;
-        for z in zs.iter_mut() {
-            z.step(px, py, dt, &mut rng);
-            min_dist = min_dist.min(z.dist_to(px, py));
+        let rep = h.update(px, py, dt, &mut rng);
+        let min_dist = rep.min_dist;
+        if args.headless && (rep.spawned > 0 || rep.despawned > 0) {
+            println!(
+                "tick {tick}: horde +{} -{} (z:{})",
+                rep.spawned,
+                rep.despawned,
+                h.len()
+            );
         }
 
         let near = map.nearest_poi(px, py, POI_CALLOUT_RADIUS_M);
+        let road = map.nearest_road(px, py, 12.0);
+        // Nearby-place detail: name + opening hours (or address) when known.
+        let mut detail = String::new();
+        if let Some(p) = near {
+            detail.push_str("near: ");
+            detail.push_str(&p.name);
+            let extra = p.hours.as_deref().or(p.addr.as_deref());
+            if let Some(e) = extra {
+                detail.push_str(" (");
+                detail.extend(e.chars().take(24));
+                detail.push(')');
+            }
+            detail.push_str("  ");
+        }
+        if let Some(r) = road {
+            detail.push_str("on: ");
+            detail.extend(r.chars().take(30));
+            detail.push_str("  ");
+        }
+        let dist_txt = if h.is_empty() {
+            "--".to_string()
+        } else {
+            format!("{min_dist:5.1}m")
+        };
         let status = format!(
-            "nearest zombie: {min_dist:5.1}m  {}{}q=quit",
-            near.map(|n| format!("near: {n}  ")).unwrap_or_default(),
+            "nearest zombie: {dist_txt} (z:{})  {detail}{}q=quit",
+            h.len(),
             if sim.is_some() { "wasd to move, " } else { "" },
         );
 
         if let Some(t) = tui.as_mut() {
-            let (w, h) = (
+            let (w, hgt) = (
                 t.term.size()?.width as usize,
                 t.term.size()?.height as usize,
             );
-            fb.resize(w, h.saturating_sub(1));
-            plot_world(&mut fb, &map, px, py, zs);
+            fb.resize(w, hgt.saturating_sub(1));
+            plot_world(&mut fb, &map, px, py, h);
             draw(t, &fb, &status)?;
-        } else if tick.is_multiple_of(10) {
-            println!("tick {tick}: {status}");
+        } else {
+            // Headless still rasterizes into a scratch buffer: exercises the
+            // area/road render path, and its cost shows in tick-work timing.
+            fb.resize(80, 23);
+            plot_world(&mut fb, &map, px, py, h);
+            if tick.is_multiple_of(10) {
+                println!("tick {tick}: {status}");
+            }
         }
 
         if min_dist <= CATCH_RADIUS_M {
@@ -564,6 +701,7 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zdeck::zombie::ZombieState;
 
     #[test]
     fn plot_centers_player_and_draws_roads() {
@@ -576,7 +714,10 @@ mod tests {
         );
         let mut fb = FrameBuf::new();
         fb.resize(80, 23);
-        plot_world(&mut fb, &map, 0.0, 0.0, &[Zombie::new(3.0, 0.0)]);
+        let mut horde = Horde::new(HordeCfg::default(), &mut XorShift64::new(9), 0.0, 0.0);
+        horde.members.clear();
+        horde.members.push(ZombieState::new(3.0, 0.0));
+        plot_world(&mut fb, &map, 0.0, 0.0, &horde);
         // player at center
         let c = 11 * 80 + 40;
         assert_eq!((fb.chars[c], fb.attr[c]), ('@', 1));
