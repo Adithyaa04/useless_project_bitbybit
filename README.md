@@ -2,7 +2,7 @@
 
 
 
-# [Zombie Deck] 🎯
+# Zombie Deck 🎯
 
 
 ## Basic Details
