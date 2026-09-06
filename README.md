@@ -23,6 +23,12 @@ Zombie apocalypses are real. Ofcourse EVERYBODY need to outrun the undead throug
 ### The Solution (that nobody asked for)
 We made a hand-held Cyber Deck using Raspberry Pi, and since your street is a live zombie-infested map, and you are the controller. No joystick, no WASD, you outrun the zombies by, well, outrunning them.
 
+### How to run the cyberdeck
+
+- In the hardware cyberdeck, this entire process is automated
+- the latitude and longitude extracted from your current location and a map (in ascii cuz its cool) loaded into the tft display
+- basically just turn on your cyber deck, you'll see your locality (yes chaya kada and all) and just start running as you see zombies approach 
+
 ## Technical Details
 ### Technologies/Components Used
 For Software:
@@ -52,14 +58,18 @@ For Software:
 # Run
 - python3 fetch_map1.py --lat <your-lat> --lon <your-lon> --radius 300
 - python3 zombie_cyberdeck.py --sim
+- python3 zombie_cyberdeck.py --gps /dev/rfcomm0 --baud 9600
 
-# Run (for real, outdoors, with GPS wired up)
+
+
+
+
 
 ### Project Documentation
 For Software:
 
 # Screenshots (Add at least 3)
-![Screenshot1]<img width="1280" height="640" src="./screenshot1.jpeg" alt="Screenshot1">
+![Screenshot1]<img width="500" height="300" src="./screenshot1.jpeg" alt="Screenshot1">
 
 First prototype for the application. just a human (green dot) and zombies(red) in a black background, and they can interact with eachother
 
