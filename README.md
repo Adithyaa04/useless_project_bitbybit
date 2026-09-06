@@ -98,8 +98,8 @@ For Hardware:
 
 
 ![Build]]<img width="500" height="300" src="./assets/images/op1.jpeg">
-![Build]<img width="500" height="300" src="./assets/images/op2.jpeg">
-![Build]<img width="500" height="300" src="./assets/images/op3.jpeg">
+![Build]<img width="800" height="300" src="./assets/images/op2.jpeg">
+![Build]<img width="800" height="300" src="./assets/images/op3.jpeg">
 
 
 ![Final]<img width="500" height="300" src="./assets/images/op4.jpeg">
