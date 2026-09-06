@@ -1,0 +1,1 @@
+root=PARTUUID=735370c5-02 rootfstype=ext4 rootwait fsck.repair=yes net.ifnames=0 logo.nologo console=tty1 fbcon=map:10 fbcon=font:TER6x12

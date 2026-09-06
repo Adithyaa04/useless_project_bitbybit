@@ -69,40 +69,40 @@ For Software:
 For Software:
 
 # Screenshots (Add at least 3)
-![Screenshot1]<img width="500" height="300" src="./screenshot1.jpeg" alt="Screenshot1">
+![Screenshot1]<img width="500" height="300" src="./assets/images/screenshot1.jpeg" alt="Screenshot1">
 
 First prototype for the application. just a human (green dot) and zombies(red) in a black background, and they can interact with eachother
 
-![Screenshot2]<img width="500" height="300" src="./screenshot3.jpeg" alt="Screenshot2">
+![Screenshot2]<img width="500" height="300" src="./assets/images/screenshot3.jpeg" alt="Screenshot2">
 
 LOC, integrating OpenStreetMap, pynmea2 pyserial and other modules necessary for the functioning
 
-![Screenshot3]<img width="500" height="300" src="./screenshot2.jpeg" alt="Screenshot3">
+![Screenshot3]<img width="500" height="300" src="./assets/images/screenshot2.jpeg" alt="Screenshot3">
 
 Better output model, which can show the names of establishments and help the human to shelter
 
 For Hardware:
 
 # Schematic & Circuit
-![Circuit]<img width="500" height="300" src="./circuit.jpeg" alt="Screenshot1">
+![Circuit]<img width="500" height="300" src="./assets/images/circuit.jpeg" alt="Screenshot1">
 
 
 
-![Schematic]<img width="500" height="300" src="./schematic.jpeg" alt="Screenshot2">
+![Schematic]<img width="500" height="300" src="./assets/images/schematic.jpeg" alt="Screenshot2">
 
 
 
 # Build Photos
-![Components]<img width="500" height="300" src="./component.jpeg" alt="Screenshot3">
+![Components]<img width="500" height="300" src="./assets/images/component.jpeg" alt="Screenshot3">
 
 
 
-![Build](./op1.jpeg)
-![Build](./op2.jpeg)
-![Build](./op3.jpeg)
+![Build](./assets/images/op1.jpeg)
+![Build](./assets/images/op2.jpeg)
+![Build](./assets/images/op3.jpeg)
 
 
-![Final](./op4.jpeg)
+![Final](./assets/images/op4.jpeg)
 
 
 ### Project Demo
