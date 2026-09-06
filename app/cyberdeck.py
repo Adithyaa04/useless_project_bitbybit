@@ -344,6 +344,8 @@ def main(stdscr, args):
 
     if args.sim:
         gps = SimulatedGPS(start_lat=map_origin_lat, start_lon=map_origin_lon)
+    elif args.gps:
+        gps = SerialGPS(args.gps, args.baud)
     else:
         gps = BitBangGPS(args.gpio, args.baud)
 
@@ -403,13 +405,17 @@ def main(stdscr, args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='Zombie Cyberdeck - GPS zombie chase on TFT')
     parser.add_argument('--sim', action='store_true',
                          help='use keyboard-simulated GPS (WASD) for indoor testing')
+    parser.add_argument('--gps', dest='gps', default=None, metavar='PORT',
+                         help='serial GPS port (e.g. /dev/rfcomm0, /dev/ttyUSB0, /dev/ttyAMA0) - uses pyserial')
+    parser.add_argument('--serial', dest='gps', metavar='PORT',
+                         help='alias for --gps')
     parser.add_argument('--gpio', type=int, default=16,
-                         help='GPIO pin (BCM numbering) wired to the GPS TX line, read via pigpio bit-bang serial')
-    parser.add_argument('--baud', type=int, default=9600)
+                         help='GPIO pin (BCM numbering) wired to GPS TX, read via pigpio bit-bang (default: 16)')
+    parser.add_argument('--baud', type=int, default=9600, help='GPS baud rate (default: 9600)')
     parser.add_argument('--map', default='map_data.json',
-                         help='path to the offline map file produced by fetch_map.py')
+                         help='path to offline map file produced by fetch_map.py')
     args = parser.parse_args()
     curses.wrapper(main, args)
