@@ -1,0 +1,35 @@
+[package]
+name = "zdeck"
+version = "0.1.0"
+edition = "2021"
+description = "Zombie Deck (Rust) - GPS zombie chase for Raspberry Pi TFT terminal"
+license = "MIT"
+
+[lib]
+name = "zdeck"
+path = "src/lib.rs"
+
+[[bin]]
+name = "zdeck-game"
+path = "src/bin/zdeck-game.rs"
+
+[[bin]]
+name = "zdeck-gps"
+path = "src/bin/zdeck-gps.rs"
+
+[[bin]]
+name = "zdeck-fetch"
+path = "src/bin/zdeck-fetch.rs"
+
+[[bin]]
+name = "zdeck-run"
+path = "src/bin/zdeck-run.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+crossterm = "0.28"
+ratatui = "0.29"
+ureq = "2"

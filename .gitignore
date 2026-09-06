@@ -23,6 +23,9 @@ build/
 dist/
 *.egg-info/
 
+# Rust
+rust/target/
+
 # OS and editor metadata
 .DS_Store
 .idea/
