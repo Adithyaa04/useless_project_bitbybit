@@ -371,8 +371,19 @@ fn plot_world(fb: &mut FrameBuf, map: &MapData, px: f64, py: f64, horde: &Horde)
     fb.put(view.cx, view.cy, '@', 1);
 }
 
+/// Center a message block on the fullscreen TUI: `Alignment::Center` handles
+/// the horizontal axis per line at the call site, and this prepends blank
+/// lines so the block also sits in the vertical middle of the screen.
+fn centered_block(mut msg: Vec<Line<'static>>, height: usize) -> Vec<Line<'static>> {
+    let pad = height.saturating_sub(msg.len()) / 2;
+    let mut full = vec![Line::from(""); pad];
+    full.append(&mut msg);
+    full
+}
+
 fn death_screen(tui: &mut Tui, restart_secs: u64) -> Result<bool> {
-    // Big "U DIED" in the same block aesthetic as the Z-DECK splash logo.
+    // Big "U DIED" in the same block aesthetic as the Z-DECK splash logo,
+    // centered horizontally AND vertically like the boot logo.
     const ART: &[&str] = &[
         " ██    ██     ██████  ███████ ██████  ",
         " ██    ██     ██   ██ ██      ██   ██ ",
@@ -402,7 +413,11 @@ fn death_screen(tui: &mut Tui, restart_secs: u64) -> Result<bool> {
                 format!("restarting in {secs}s ...  (R = now, Q = quit)"),
                 Style::default().fg(Color::White),
             )));
-            f.render_widget(Paragraph::new(msg).alignment(Alignment::Center), f.area());
+            let h = f.area().height as usize;
+            f.render_widget(
+                Paragraph::new(centered_block(msg, h)).alignment(Alignment::Center),
+                f.area(),
+            );
         })?;
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(k) = event::read()? {
@@ -419,8 +434,8 @@ fn death_screen(tui: &mut Tui, restart_secs: u64) -> Result<bool> {
     }
 }
 
-/// Fullscreen "LOADING AREA" overlay shown while a fresh 300 m area is
-/// fetched after walking out of the loaded map.
+/// Fullscreen "LOADING AREA" overlay, centered like the logo screens, shown
+/// while a fresh 300 m area is fetched after walking out of the loaded map.
 fn loading_screen(tui: &mut Tui, detail: &str) -> Result<()> {
     tui.term.draw(|f| {
         let msg = vec![
@@ -435,7 +450,11 @@ fn loading_screen(tui: &mut Tui, detail: &str) -> Result<()> {
             Line::from(Span::styled(detail.to_string(), style_for(3))),
             Line::from(Span::styled("hold on, fetching fresh map", style_for(3))),
         ];
-        f.render_widget(Paragraph::new(msg).alignment(Alignment::Center), f.area());
+        let h = f.area().height as usize;
+        f.render_widget(
+            Paragraph::new(centered_block(msg, h)).alignment(Alignment::Center),
+            f.area(),
+        );
     })?;
     Ok(())
 }
@@ -624,6 +643,8 @@ fn main() -> Result<()> {
         u64::MAX
     };
     let auto_refetch = !args.no_auto_refetch;
+    // "Long ago" so the first live fix of the opening run re-checks the
+    // loaded area; death restarts reset it again at the restart site below.
     let mut last_refetch = Instant::now() - Duration::from_secs(3600);
     let mut total_ticks = 0u64;
     let mut work_ns: u128 = 0;
@@ -632,7 +653,9 @@ fn main() -> Result<()> {
     // ---- session loop: death auto-restarts a fresh horde ("start over") ----
     'session: loop {
         let mut horde: Option<Horde> = None;
-        // Fresh run: SIM player back at the area center; GPS keeps its live fix.
+        // Fresh run: SIM player back at the area center; GPS drops its last
+        // fix and re-locks the live position from the still-running feed —
+        // even when the previous run never got one, polling continues.
         if let Some(s) = sim.as_mut() {
             s.x = 0.0;
             s.y = 0.0;
@@ -697,7 +720,7 @@ fn main() -> Result<()> {
                     t.term.size()?.height as usize,
                 );
                 fb.resize(w, h.saturating_sub(1));
-                draw(t, &fb, "Waiting for GPS fix... (q=quit)")?;
+                draw(t, &fb, "Waiting for GPS fix... no lock? go OUT into open sky (q=quit)")?;
             } else {
                 std::thread::sleep(Duration::from_millis(50));
             }
@@ -819,6 +842,10 @@ fn main() -> Result<()> {
         if min_dist <= CATCH_RADIUS_M {
             if let Some(t) = tui.as_mut() {
                 if death_screen(t, args.restart_secs)? {
+                    // Start over around the CURRENT live position: drop the
+                    // horde and force the area check on the next fix, so a
+                    // restart far from the loaded map refetches it.
+                    last_refetch = Instant::now() - Duration::from_secs(3600);
                     continue 'session; // automatic start over
                 }
                 quit = true;

@@ -5,9 +5,12 @@
 //!    "continues where it left").
 //! 2. Mode prompt with a 5 s countdown, defaulting to AUTO (GPS on
 //!    `/dev/ttyAMA0`, the only GPS device on the deck).
-//! 3. AUTO: wait for a live GPS fix -> fetch a fresh 300 m map around it ->
-//!    launch `zdeck-game` in GPS-serial mode. The game itself keeps polling
-//!    the sensor and reloads areas as you walk out of them.
+//! 3. AUTO: wait (as long as needed) for a live GPS fix, reminding the user
+//!    to step into the open -> fetch a fresh 300 m map around it -> launch
+//!    `zdeck-game` in GPS-serial mode. No fallback location: without a lock
+//!    the deck keeps waiting, never starts on a stale/default map.
+//!    The game itself keeps polling the sensor and reloads areas as you
+//!    walk out of them.
 //! 4. SIM: indoor WASD testing without hardware.
 //!
 //! ```sh
@@ -34,8 +37,9 @@ const DEFAULT_BAUD: u32 = 9600;
 const AUTO_RADIUS_M: f64 = 300.0;
 /// Mode-prompt countdown, seconds.
 const MODE_COUNTDOWN_S: u64 = 5;
-/// How long AUTO waits for the first GPS fix before falling back to SIM.
-const DEFAULT_FIX_TIMEOUT_S: u64 = 90;
+/// Seconds between "go out into the open" reminders while AUTO waits.
+/// AUTO waits indefinitely for a lock — there is no fallback location.
+const DEFAULT_FIX_HINT_S: u64 = 30;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -73,9 +77,10 @@ struct Args {
     /// Non-interactive, auto-accept defaults (= AUTO when no other flag)
     #[arg(long)]
     yes: bool,
-    /// Seconds to wait for the first GPS fix in AUTO mode
-    #[arg(long, default_value_t = DEFAULT_FIX_TIMEOUT_S)]
-    fix_timeout: u64,
+    /// Seconds between open-sky reminders while AUTO waits for GPS lock
+    /// (AUTO waits indefinitely — no fallback location, no SIM switch)
+    #[arg(long, default_value_t = DEFAULT_FIX_HINT_S)]
+    fix_hint: u64,
     /// Directory containing the zdeck-* binaries (default: this exe's dir, then PATH)
     #[arg(long, value_name = "DIR")]
     bin_dir: Option<String>,
@@ -101,20 +106,34 @@ fn clear_screen() {
     let _ = std::io::stdout().flush();
 }
 
-/// Fullscreen splash: clear + big logo, fresh every boot (no resume).
+/// Fullscreen splash: clear + big logo centered on the TFT, fresh every
+/// boot (no resume). Falls back to plain print when the size is unknown.
 fn splash() {
     clear_screen();
-    println!(
-        "{GRN}{BOLD}
-   ███████╗         ██████╗ ███████╗ ██████╗██╗  ██╗
-   ╚══███╔╝         ██╔══██╗██╔════╝██╔════╝██║ ██╔╝
-     ███╔╝  █████╗  ██║  ██║█████╗  ██║     █████╔╝
-    ███╔╝   ╚════╝  ██║  ██║██╔══╝  ██║     ██╔═██╗
-   ███████╗         ██████╔╝███████╗╚██████╗██║  ██╗
-   ╚══════╝         ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝
-{RST}{YEL}{BOLD}                    Z  —  D E C K{RST}{DIM}  — Bit By Bit — Run for your life.{RST}"
-    );
-    println!("{DIM}              PI3-64 // AUTO-BOOT // GPS {DEFAULT_GPS_PORT}{RST}");
+    const ART: &[&str] = &[
+        "███████╗         ██████╗ ███████╗ ██████╗██╗  ██╗",
+        "╚══███╔╝         ██╔══██╗██╔════╝██╔════╝██║ ██╔╝",
+        "  ███╔╝  █████╗  ██║  ██║█████╗  ██║     █████╔╝",
+        " ███╔╝   ╚════╝  ██║  ██║██╔══╝  ██║     ██╔═██╗",
+        "███████╗         ██████╔╝███████╗╚██████╗██║  ██╗",
+        "╚══════╝         ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝",
+    ];
+    let sub = format!("Z  —  D E C K  — Bit By Bit — Run for your life.");
+    let sub2 = format!("PI3-64 // AUTO-BOOT // GPS {DEFAULT_GPS_PORT}");
+    let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+    let total = ART.len() + 3; // art + blank + 2 sub lines
+    for _ in 0..(rows as usize).saturating_sub(total) / 2 {
+        println!();
+    }
+    for line in ART {
+        let pad = (cols as usize).saturating_sub(line.chars().count()) / 2;
+        println!("{GRN}{BOLD}{:pad$}{line}{RST}", "", pad = pad);
+    }
+    println!();
+    for (line, color) in [(&sub, YEL), (&sub2, DIM)] {
+        let pad = (cols as usize).saturating_sub(line.chars().count()) / 2;
+        println!("{BOLD}{color}{:pad$}{line}{RST}", "", pad = pad);
+    }
     let _ = std::io::stdout().flush();
     // Linger so the TFT actually reads the logo.
     std::thread::sleep(Duration::from_millis(1500));
@@ -236,76 +255,99 @@ fn countdown_pick() -> Mode {
 
 // ---- AUTO helpers: live GPS fix + fresh map ----
 
-/// Spawn `zdeck-gps --source serial` and wait up to `timeout` for the first
-/// valid fix. Shows a live spinner so the TFT never looks frozen.
-fn wait_for_gps_fix(
-    gps_bin: &Path,
-    port: &str,
-    baud: u32,
-    timeout: Duration,
-) -> Option<(f64, f64)> {
+/// AUTO GPS lock: spawn `zdeck-gps --source serial` and keep listening
+/// until the first valid fix arrives — no timeout, no fallback location.
+/// Every `hint_every` seconds without a lock, remind the user to step out
+/// into an open place with a clear view of the sky. If the feed itself
+/// drops (module detached), it is respawned and the wait continues, so
+/// every (re)start re-locks the live position — even when an earlier run
+/// never got a lock.
+fn wait_for_gps_fix(gps_bin: &Path, port: &str, baud: u32, hint_every: Duration) -> (f64, f64) {
     println!("\n{BOLD}[AUTO]{RST} Scanning GPS on {CYA}{port}{RST} @ {baud} baud ...");
+    println!("  {DIM}No fallback — the game starts only on a live fix.{RST}");
     if !Path::new(port).exists() {
         println!("  {YEL}⚠ {port} not present yet — still listening (module may enumerate late){RST}");
     }
-    let mut child = Command::new(gps_bin)
-        .args(["--source", "serial", "--port", port, "--baud", &baud.to_string()])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-    let out = child.stdout.take()?;
-    let (tx, rx) = mpsc::channel::<String>();
-    std::thread::spawn(move || {
-        for line in BufReader::new(out).lines().map_while(Result::ok) {
-            if tx.send(line).is_err() {
-                break;
-            }
-        }
-    });
-
     let start = Instant::now();
+    let mut last_hint = Instant::now() - hint_every; // first hint shows promptly
     let spinner = ["|", "/", "-", "\\"];
-    let mut i = 0;
+    let mut i = 0u64;
     loop {
-        let elapsed = start.elapsed();
-        if elapsed >= timeout {
-            break;
-        }
-        match rx.recv_timeout(Duration::from_millis(200)) {
-            Ok(line) => {
-                if let Some(f) = GpsFix::decode(&line) {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    println!(
-                        "\n  {GRN}✓ GPS fix: {:.6},{:.6}{RST} (after {:.0}s)",
-                        f.lat,
-                        f.lon,
-                        elapsed.as_secs_f64()
-                    );
-                    return Some((f.lat, f.lon));
+        let mut child = match Command::new(gps_bin)
+            .args(["--source", "serial", "--port", port, "--baud", &baud.to_string()])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                println!(
+                    "  {RED}✗ can't spawn {}: {e} — retrying...{RST}",
+                    gps_bin.display()
+                );
+                std::thread::sleep(Duration::from_secs(3));
+                continue;
+            }
+        };
+        let out = match child.stdout.take() {
+            Some(o) => o,
+            None => {
+                let _ = child.kill();
+                let _ = child.wait();
+                std::thread::sleep(Duration::from_secs(3));
+                continue;
+            }
+        };
+        let (tx, rx) = mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            for line in BufReader::new(out).lines().map_while(Result::ok) {
+                if tx.send(line).is_err() {
+                    break;
                 }
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                print!(
-                    "\r  {DIM}waiting for fix... {:>3}s / {}s {} {RST}",
-                    elapsed.as_secs(),
-                    timeout.as_secs(),
-                    spinner[i % spinner.len()]
-                );
-                let _ = std::io::stdout().flush();
-                i += 1;
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                println!("\n  {RED}✗ GPS feed ended (module detached?){RST}");
-                break;
+        });
+
+        let mut feed_alive = true;
+        while feed_alive {
+            match rx.recv_timeout(Duration::from_millis(200)) {
+                Ok(line) => {
+                    if let Some(f) = GpsFix::decode(&line) {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        println!(
+                            "\n  {GRN}✓ GPS fix: {:.6},{:.6}{RST} (after {:.0}s)",
+                            f.lat,
+                            f.lon,
+                            start.elapsed().as_secs_f64()
+                        );
+                        return (f.lat, f.lon);
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    print!(
+                        "\r  {DIM}waiting for fix... {:>4}s {} {RST}",
+                        start.elapsed().as_secs(),
+                        spinner[(i % spinner.len() as u64) as usize]
+                    );
+                    let _ = std::io::stdout().flush();
+                    i += 1;
+                    if last_hint.elapsed() >= hint_every {
+                        println!(
+                            "\n  {YEL}○ No GPS lock yet — go OUT into an OPEN place with a clear view of the sky.{RST}"
+                        );
+                        last_hint = Instant::now();
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    println!("\n  {RED}✗ GPS feed lost (module detached?) — respawning, still waiting...{RST}");
+                    feed_alive = false;
+                }
             }
         }
+        let _ = child.kill();
+        let _ = child.wait();
+        std::thread::sleep(Duration::from_secs(2));
     }
-    let _ = child.kill();
-    let _ = child.wait();
-    println!();
-    None
 }
 
 /// Always fetch a FRESH map around the live fix (never "continue where it
@@ -447,33 +489,27 @@ fn run_auto(bins: &Bins, args: &Args) -> Result<()> {
     let port = args.gps.clone().unwrap_or_else(|| DEFAULT_GPS_PORT.to_string());
     let map = default_map_path(args.map.as_deref());
     println!("\n{BOLD}[2/3] AUTO mode{RST} {DIM}(fresh session — old map is discarded){RST}");
-    let timeout = Duration::from_secs(args.fix_timeout.max(5));
-    match wait_for_gps_fix(&bins.gps, &port, args.baud, timeout) {
-        Some((lat, lon)) => {
-            let ok = fetch_fresh(&bins.fetch, lat, lon, args.radius, &map)?;
-            if !ok {
-                // Fetch failed but a stale map may still let us play.
-                if map.is_file() {
-                    println!("  {YEL}○ fetch failed — starting on stale map{RST}");
-                    launch_gps_serial(bins, args, &map, &port, args.baud);
-                } else {
-                    println!("  {RED}✗ no map at all — cannot start. Retrying in SIM is possible.{RST}");
-                }
-                return Ok(());
+    // Every AUTO (re)start re-locks the live position and fetches a fresh
+    // area around it — even when an earlier run never got a lock, this keeps
+    // checking until it does. No SIM switch, no stale/default map.
+    let (lat, lon) = wait_for_gps_fix(
+        &bins.gps,
+        &port,
+        args.baud,
+        Duration::from_secs(args.fix_hint.max(10)),
+    );
+    loop {
+        match fetch_fresh(&bins.fetch, lat, lon, args.radius, &map) {
+            Ok(true) => break,
+            _ => {
+                println!(
+                    "  {YEL}○ Map fetch failed — check hotspot/internet, retrying in 10 s...{RST}"
+                );
+                std::thread::sleep(Duration::from_secs(10));
             }
-            launch_gps_serial(bins, args, &map, &port, args.baud);
-        }
-        None => {
-            println!(
-                "  {YEL}○ No GPS fix within {}s — falling back to SIM so the deck stays playable.{RST}",
-                timeout.as_secs()
-            );
-            std::thread::sleep(Duration::from_secs(2));
-            // SIM needs *some* map: reuse stale one or fetch defaults.
-            let mp = ensure_sim_map(bins, args)?;
-            launch_sim(bins, args, &mp);
         }
     }
+    launch_gps_serial(bins, args, &map, &port, args.baud);
     Ok(())
 }
 
@@ -540,11 +576,10 @@ fn main() -> Result<()> {
         return Ok(());
     }
     if args.gps.is_some() && (args.auto || args.yes) {
-        // --gps with --yes/--auto: direct serial launch (map must exist/fetch).
+        // --gps with --yes/--auto: same AUTO flow (wait for lock, fresh
+        // fetch) on the explicit port — no stale/default map.
         let bins = ensure_bins(&args)?;
-        let port = args.gps.clone().unwrap();
-        let mp = ensure_sim_map(&bins, &args)?;
-        launch_gps_serial(&bins, &args, &mp, &port, args.baud);
+        run_auto(&bins, &args)?;
         return Ok(());
     }
 
