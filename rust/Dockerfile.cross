@@ -1,0 +1,62 @@
+# Docker-based cross-compilation for Raspberry Pi 3 (Debian-based OS).
+#
+# Targets:
+#   armv7-unknown-linux-gnueabihf  (32-bit Pi OS / Debian armhf — DEFAULT, safest for Pi 3)
+#   aarch64-unknown-linux-gnu      (64-bit Pi OS / Debian arm64)
+#
+# Usage (via helper script, recommended):
+#   ./rust/build-pi.sh              # builds BOTH targets -> ./binary/
+#   ./rust/build-pi.sh armv7        # 32-bit only -> ./binary/pi3-armv7/
+#   ./rust/build-pi.sh arm64        # 64-bit only -> ./binary/pi3-arm64/
+#
+# Manual usage:
+#   docker build -f rust/Dockerfile.cross \
+#     --build-arg TARGET=armv7-unknown-linux-gnueabihf \
+#     -t zdeck-cross:armv7 ./rust
+#   id=$(docker create zdeck-cross:armv7)
+#   docker cp $id:/src/target/armv7-unknown-linux-gnueabihf/release/zdeck-game ./binary/
+#   docker rm $id
+#
+# Notes:
+# - Base is rust:bookworm (glibc) so binaries run on Debian/Raspberry Pi OS (glibc),
+#   NOT Alpine/musl systems.
+# - All deps (clap/serde/ratatui/crossterm/ureq-rustls) are pure-Rust, so only a
+#   C cross-linker + glibc headers are needed — installed below via apt.
+# - BuildKit cache mounts keep rebuilds fast (cargo registry + target dir cached).
+
+ARG RUST_VERSION=1.97
+FROM rust:${RUST_VERSION}-bookworm AS builder
+
+ARG TARGET=armv7-unknown-linux-gnueabihf
+
+# Cross toolchains for both Pi 3 ABIs (install both so one image serves both targets).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6-dev-armhf-cross \
+      gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross \
+      ca-certificates file \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rustup target add armv7-unknown-linux-gnueabihf aarch64-unknown-linux-gnu
+
+WORKDIR /src
+
+# Dependency layer first for better caching.
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY .cargo ./.cargo
+
+# Release build for the requested TARGET.
+# --locked keeps Cargo.lock authoritative; remove if you intentionally update deps.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/src/target \
+    cargo build --locked --release --target "${TARGET}" \
+    && mkdir -p "/out/${TARGET}" \
+    && cp "/src/target/${TARGET}/release/zdeck-game" \
+          "/src/target/${TARGET}/release/zdeck-gps" \
+          "/src/target/${TARGET}/release/zdeck-fetch" \
+          "/src/target/${TARGET}/release/zdeck-run" \
+          "/out/${TARGET}/" \
+    && file "/out/${TARGET}/"* || true
+
+# Default container behaviour: show what was built.
+CMD ["sh", "-c", "ls -la /out/*/ && file /out/*/* || true"]

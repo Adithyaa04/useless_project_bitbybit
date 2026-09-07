@@ -1,0 +1,16 @@
+# Linker config for Raspberry Pi 3 cross-compilation (Debian-based OS).
+#
+# - armv7-unknown-linux-gnueabihf -> Pi 3, 32-bit Raspberry Pi OS / Debian armhf
+#   (safest default: also runs on 64-bit Pi OS via armhf compat)
+# - aarch64-unknown-linux-gnu      -> Pi 3, 64-bit Raspberry Pi OS / Debian arm64
+#
+# Inside the Docker cross image these linkers come from:
+#   gcc-arm-linux-gnueabihf / gcc-aarch64-linux-gnu
+# For LOCAL (non-docker) cross builds, install them with:
+#   sudo apt install gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
+
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc"
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
