@@ -1,0 +1,22 @@
+[Unit]
+Description=Z-DECK zombie chase (Pi 3 64-bit kiosk, alternative to login hook)
+After=multi-user.target
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/zdeck
+ExecStart=/home/pi/zdeck/zdeck-auto.sh --auto
+Restart=always
+RestartSec=5
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=graphical.target

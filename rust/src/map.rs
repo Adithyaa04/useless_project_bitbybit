@@ -136,6 +136,9 @@ fn is_major(highway: &str) -> bool {
 pub struct MapData {
     pub origin_lat: f64,
     pub origin_lon: f64,
+    /// Fetch radius this file was built with (meters). Used for auto area
+    /// reload: walking past ~80% of it triggers a fresh fetch.
+    pub radius_m: f64,
     pub segments: Vec<Segment>,
     pub pois: Vec<Poi>,
     pub roads: Vec<Road>,
@@ -147,6 +150,7 @@ impl MapData {
         Self {
             origin_lat: fallback_lat,
             origin_lon: fallback_lon,
+            radius_m: 300.0,
             segments: Vec::new(),
             pois: Vec::new(),
             roads: Vec::new(),
@@ -162,6 +166,7 @@ impl MapData {
             Err(_) => return Self::empty(fallback_lat, fallback_lon),
         };
         let (olat, olon) = (raw.origin_lat, raw.origin_lon);
+        let oradius = raw.radius_m.unwrap_or(300.0);
         let cos_lat0 = olat.to_radians().cos();
         let proj = |lat: f64, lon: f64| latlon_to_local_with_cos(lat, lon, olat, olon, cos_lat0);
 
@@ -217,6 +222,7 @@ impl MapData {
         Self {
             origin_lat: olat,
             origin_lon: olon,
+            radius_m: oradius,
             segments,
             pois,
             roads,

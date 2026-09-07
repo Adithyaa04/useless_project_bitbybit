@@ -98,6 +98,19 @@ struct Args {
     /// Max reinforcement spawns per second
     #[arg(long, default_value_t = MAX_SPAWN_PER_S)]
     spawn_per_s: f64,
+    /// Fetch binary used for "LOADING AREA" auto-refetch when you walk out
+    /// of the loaded map (same dir as zdeck-game by default via PATH)
+    #[arg(long, default_value = "zdeck-fetch")]
+    fetch_bin: String,
+    /// Radius (meters) for each auto-refetched area
+    #[arg(long, default_value_t = 300.0)]
+    fetch_radius: f64,
+    /// Disable auto area reload (stay on the starting map forever)
+    #[arg(long)]
+    no_auto_refetch: bool,
+    /// Seconds on the YOU DIED screen before auto-restart
+    #[arg(long, default_value_t = 10)]
+    restart_secs: u64,
 }
 
 // ---------------------------------------------------------------- TUI guard
@@ -358,24 +371,105 @@ fn plot_world(fb: &mut FrameBuf, map: &MapData, px: f64, py: f64, horde: &Horde)
     fb.put(view.cx, view.cy, '@', 1);
 }
 
-fn death_screen(tui: &mut Tui) -> Result<()> {
+fn death_screen(tui: &mut Tui, restart_secs: u64) -> Result<bool> {
+    // Big "U DIED" in the same block aesthetic as the Z-DECK splash logo.
+    const ART: &[&str] = &[
+        " ██    ██     ██████  ███████ ██████  ",
+        " ██    ██     ██   ██ ██      ██   ██ ",
+        " ██    ██     ██   ██ █████   ██   ██ ",
+        " ██    ██     ██   ██ ██      ██   ██ ",
+        "  ██████      ██████  ███████ ██████  ",
+    ];
+    let deadline = Instant::now() + Duration::from_secs(restart_secs.max(3));
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let secs = left.as_secs() + 1;
+        tui.term.draw(|f| {
+            let mut msg: Vec<Line<'static>> = vec![Line::from("")];
+            for row in ART {
+                msg.push(Line::from(Span::styled(
+                    row.to_string(),
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                )));
+            }
+            msg.push(Line::from(""));
+            msg.push(Line::from(Span::styled(
+                "THE HORDE GOT YOU",
+                Style::default().fg(Color::Gray),
+            )));
+            msg.push(Line::from(""));
+            msg.push(Line::from(Span::styled(
+                format!("restarting in {secs}s ...  (R = now, Q = quit)"),
+                Style::default().fg(Color::White),
+            )));
+            f.render_widget(Paragraph::new(msg).alignment(Alignment::Center), f.area());
+        })?;
+        if event::poll(Duration::from_millis(100))? {
+            if let Event::Key(k) = event::read()? {
+                match k.code {
+                    KeyCode::Char('q' | 'Q') | KeyCode::Esc => return Ok(false),
+                    KeyCode::Char('r' | 'R') | KeyCode::Enter => return Ok(true),
+                    _ => {}
+                }
+            }
+        }
+        if Instant::now() >= deadline {
+            return Ok(true); // auto start over
+        }
+    }
+}
+
+/// Fullscreen "LOADING AREA" overlay shown while a fresh 300 m area is
+/// fetched after walking out of the loaded map.
+fn loading_screen(tui: &mut Tui, detail: &str) -> Result<()> {
     tui.term.draw(|f| {
         let msg = vec![
             Line::from(""),
-            Line::from(Span::styled("YOU DIED", style_for(2))),
+            Line::from(Span::styled(
+                "LOADING AREA ...",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
-            Line::from(Span::styled("press q to quit", style_for(3))),
+            Line::from(Span::styled(detail.to_string(), style_for(3))),
+            Line::from(Span::styled("hold on, fetching fresh map", style_for(3))),
         ];
         f.render_widget(Paragraph::new(msg).alignment(Alignment::Center), f.area());
     })?;
-    loop {
-        if let Event::Key(k) = event::read()? {
-            if matches!(k.code, KeyCode::Char('q' | 'Q') | KeyCode::Esc) {
-                break;
-            }
-        }
-    }
     Ok(())
+}
+
+/// Run `fetch_bin --lat --lon --radius --out map_path` synchronously.
+/// Returns the freshly loaded map on success, `None` when the fetch failed
+/// (caller keeps playing on the old area).
+fn try_refetch(fetch_bin: &str, lat: f64, lon: f64, radius: f64, map_path: &str) -> Option<MapData> {
+    let st = Command::new(fetch_bin)
+        .args([
+            "--lat",
+            &lat.to_string(),
+            "--lon",
+            &lon.to_string(),
+            "--radius",
+            &radius.to_string(),
+            "--out",
+            map_path,
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .ok()?;
+    if !st.success() {
+        return None;
+    }
+    let fresh = MapData::load(map_path, lat, lon);
+    // Sanity: origin must have moved near the player; empty files stay out.
+    if fresh.segments.is_empty() && fresh.roads.is_empty() && fresh.areas.is_empty() {
+        // Still accept origin-only files? No — treat fully empty as failure
+        // so we don't discard a good area for a blank one.
+        return None;
+    }
+    Some(fresh)
 }
 
 // ---------------------------------------------------------------- GPS feeds
@@ -437,7 +531,7 @@ fn main() -> Result<()> {
         );
     }
 
-    let map = MapData::load(&args.map, 10.0, 76.3);
+    let mut map = MapData::load(&args.map, 10.0, 76.3);
     if map.segments.is_empty() {
         eprintln!(
             "No map data at '{}' -- blank background. Run zdeck-fetch first.",
@@ -513,7 +607,6 @@ fn main() -> Result<()> {
     } else {
         XorShift64::from_time()
     };
-    let mut horde: Option<Horde> = None;
     let horde_cfg = HordeCfg {
         min: args.min_zombies,
         max: args.max_zombies.max(1),
@@ -522,8 +615,6 @@ fn main() -> Result<()> {
         max_spawn_per_s: args.spawn_per_s,
         spawn_trigger_m: SPAWN_TRIGGER_M,
     };
-    let mut fix: Option<GpsFix> = None;
-    let mut feed_dead = false;
 
     let frame_dt = Duration::from_micros(1_000_000 / TICK_HZ);
     let step_len = ZOMBIE_SPEED_MPS * PLAYER_SPEED_MULT / TICK_HZ as f64;
@@ -532,8 +623,26 @@ fn main() -> Result<()> {
     } else {
         u64::MAX
     };
-    let mut tick = 0u64;
+    let auto_refetch = !args.no_auto_refetch;
+    let mut last_refetch = Instant::now() - Duration::from_secs(3600);
+    let mut total_ticks = 0u64;
     let mut work_ns: u128 = 0;
+    let mut quit = false;
+
+    // ---- session loop: death auto-restarts a fresh horde ("start over") ----
+    'session: loop {
+        let mut horde: Option<Horde> = None;
+        // Fresh run: SIM player back at the area center; GPS keeps its live fix.
+        if let Some(s) = sim.as_mut() {
+            s.x = 0.0;
+            s.y = 0.0;
+            s.origin_lat = map.origin_lat;
+            s.origin_lon = map.origin_lon;
+        }
+        let mut fix: Option<GpsFix> = None;
+        let mut feed_dead = false;
+        let mut tick = 0u64;
+        let mut status_note = String::new();
 
     loop {
         let t0 = Instant::now();
@@ -544,7 +653,7 @@ fn main() -> Result<()> {
                 if let Event::Key(k) = event::read()? {
                     if let KeyCode::Char(c) = k.code {
                         match c.to_ascii_lowercase() {
-                            'q' => return Ok(()),
+                            'q' => { quit = true; break 'session; }
                             'w' if sim.is_some() => sim.as_mut().unwrap().y += step_len,
                             's' if sim.is_some() => sim.as_mut().unwrap().y -= step_len,
                             'a' if sim.is_some() => sim.as_mut().unwrap().x -= step_len,
@@ -552,7 +661,7 @@ fn main() -> Result<()> {
                             _ => {}
                         }
                     } else if matches!(k.code, KeyCode::Esc) {
-                        return Ok(());
+                        quit = true; break 'session;
                     }
                 }
             }
@@ -595,6 +704,45 @@ fn main() -> Result<()> {
             continue;
         };
 
+        // ---- rolling area: out of the loaded map -> LOADING AREA -> fresh fetch ----
+        // Continuously polled sensor data drives this: once the live fix is
+        // past ~80% of the loaded radius, stop, fetch the new area around
+        // the player, discard the old one, and keep playing.
+        if auto_refetch {
+            let known = if map.radius_m > 0.0 { map.radius_m } else { args.fetch_radius };
+            let dist_origin = haversine_m(cur.lat, cur.lon, map.origin_lat, map.origin_lon);
+            if dist_origin > known * 0.8 && last_refetch.elapsed() > Duration::from_secs(10) {
+                last_refetch = Instant::now();
+                if let Some(t) = tui.as_mut() {
+                    let _ = loading_screen(
+                        t,
+                        &format!("{:.6},{:.6} — {dist_origin:.0}m from area center", cur.lat, cur.lon),
+                    );
+                } else {
+                    println!("LOADING AREA ... refetch at {},{}", cur.lat, cur.lon);
+                }
+                match try_refetch(&args.fetch_bin, cur.lat, cur.lon, args.fetch_radius, &args.map) {
+                    Some(fresh) => {
+                        map = fresh;
+                        horde = None; // new area, new horde at the player
+                        if let Some(s) = sim.as_mut() {
+                            s.origin_lat = map.origin_lat;
+                            s.origin_lon = map.origin_lon;
+                            s.x = 0.0;
+                            s.y = 0.0;
+                        }
+                        status_note = "new area loaded".to_string();
+                        // Recompute position against the new origin next tick.
+                        fix = Some(cur);
+                        continue;
+                    }
+                    None => {
+                        status_note = "area fetch failed — staying".to_string();
+                    }
+                }
+            }
+        }
+
         // Lazily center the opening horde on the first real fix (the player
         // may be far from the map origin on real hardware).
         let (px, py) = latlon_to_local(cur.lat, cur.lon, map.origin_lat, map.origin_lon);
@@ -632,6 +780,13 @@ fn main() -> Result<()> {
             detail.extend(r.chars().take(30));
             detail.push_str("  ");
         }
+        if !status_note.is_empty() {
+            detail.push_str(&status_note);
+            detail.push_str("  ");
+            if tick % 20 == 0 {
+                status_note.clear();
+            }
+        }
         let dist_txt = if h.is_empty() {
             "--".to_string()
         } else {
@@ -663,16 +818,21 @@ fn main() -> Result<()> {
 
         if min_dist <= CATCH_RADIUS_M {
             if let Some(t) = tui.as_mut() {
-                death_screen(t)?;
+                if death_screen(t, args.restart_secs)? {
+                    continue 'session; // automatic start over
+                }
+                quit = true;
+                break 'session;
             } else {
                 println!("tick {tick}: YOU DIED ({status})");
             }
-            break;
+            break 'session;
         }
 
         tick += 1;
-        if tick >= max_ticks {
-            break;
+        total_ticks += 1;
+        if total_ticks >= max_ticks {
+            break 'session;
         }
         work_ns += t0.elapsed().as_nanos();
         if !args.headless {
@@ -682,18 +842,20 @@ fn main() -> Result<()> {
             }
         }
     }
+    } // 'session
+    let _ = quit;
 
     if let Some(mut c) = child {
         let _ = c.kill();
         let _ = c.wait();
     }
     if args.headless {
-        let avg_us = if tick > 0 {
-            work_ns / tick as u128 / 1000
+        let avg_us = if total_ticks > 0 {
+            work_ns / total_ticks as u128 / 1000
         } else {
             0
         };
-        println!("done: {tick} ticks, avg tick work {avg_us}us");
+        println!("done: {total_ticks} ticks, avg tick work {avg_us}us");
     }
     Ok(())
 }
