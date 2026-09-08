@@ -8,6 +8,16 @@
 # warns but never hard-fails on OPTIONAL hardware — SIM mode always works.
 # Kiosk loop: when the game exits, wait 8 s (Ctrl+C drops to a shell for
 # maintenance) and start over, so the deck never sits on a bare prompt.
+#
+# Crash-loop breaker: a HEALTHY session runs for minutes; a BROKEN setup
+# (missing binaries, game crashing on start) exits in seconds with a
+# non-zero code. After MAX_FAST_STRIKES quick failures in a row we STOP
+# relaunching and leave the error on screen (plus a long, interruptible
+# pause), otherwise the logo just flashes forever and you can never read
+# what went wrong. Single-shot debug: zdeck-auto.sh --no-loop.
+FAST_EXIT_S=45
+MAX_FAST_STRIKES=3
+COOLDOWN_S=120
 
 set -u
 
@@ -98,13 +108,32 @@ if [[ "$NO_LOOP" -eq 1 ]]; then
     exec "$RUN" "${ARGS[@]}"
 fi
 
+strikes=0
 while true; do
     # No args = splash + 5 s AUTO/SIM countdown (AUTO wins on timeout).
     # Pass-through allows `zdeck-auto.sh --sim` for indoor testing.
+    start=$SECONDS
     "$RUN" "${ARGS[@]}"
     code=$?
+    elapsed=$((SECONDS - start))
     echo
-    echo "Z-DECK exited (code $code)."
+    echo "Z-DECK exited (code $code) after ${elapsed}s."
+    if [[ "$code" -ne 0 && "$elapsed" -lt "$FAST_EXIT_S" ]]; then
+        strikes=$((strikes + 1))
+    else
+        strikes=0
+    fi
+    if [[ "$strikes" -ge "$MAX_FAST_STRIKES" ]]; then
+        echo
+        echo "CRASH LOOP: failed $strikes times in a row in under ${FAST_EXIT_S}s — NOT restarting."
+        echo "The error above is the real problem (often: a missing ~/zdeck/zdeck-*"
+        echo "binary, or the game crashing on start). Debug with ONE run (no loop):"
+        echo "  ~/zdeck/zdeck-auto.sh --no-loop"
+        echo "  ~/zdeck/zdeck-run --sim"
+        echo "Pausing ${COOLDOWN_S}s so you can read this — Ctrl+C now for a shell."
+        sleep "$COOLDOWN_S"
+        exit "$code"
+    fi
     echo "Restarting the deck in 8 s — press Ctrl+C now to stay in the shell."
     sleep 8
     clear
