@@ -1,0 +1,14 @@
+[Unit]
+Description=M5Stack CardKB virtual keyboard (I2C 0x5F -> uinput)
+After=multi-user.target
+
+[Service]
+Type=simple
+# setup.sh rewrites User= and ExecStart= for your actual user/home.
+User=dietpi
+ExecStart=/usr/bin/python3 /home/dietpi/cardkb_keyboard.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
