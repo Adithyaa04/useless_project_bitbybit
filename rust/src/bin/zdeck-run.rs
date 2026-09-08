@@ -5,8 +5,10 @@
 //!    "continues where it left").
 //! 2. Launcher menu — ↑/↓ + Enter: `Start` (saved default mode), `Settings`
 //!    (edit + persist defaults to `zdeck.conf` next to the binary), or
-//!    `Quit to terminal` (drops to a normal shell; exiting it returns to
-//!    the deck). Works with the CardKB arrows, USB keyboards, and 1/2/3.
+//!    `Quit to terminal` (exits with code 42; every wrapper in the chain —
+//!    zdeck-auto.sh, zdeck-main.sh, the tty1 login hook — honours it and
+//!    unwinds to a normal login shell instead of relaunching).
+//!    Works with the CardKB arrows, USB keyboards, and 1/2/3.
 //! 3. AUTO: wait (as long as needed) for a live GPS fix, reminding the user
 //!    to step into the open -> fetch a fresh map around it -> launch
 //!    `zdeck-game` in GPS-serial mode. No fallback location: without a lock
@@ -23,10 +25,10 @@
 //! zdeck-run --gps /dev/ttyAMA0 --baud 9600
 //! ```
 //!
-//! Quit-to-terminal note: under DietPi's "Custom script (foreground)"
-//! autostart the menu IS the session, so quitting the shell (or the
-//! launcher) returns to a fresh login/launcher — by design. For a
-//! persistent shell that survives, Ctrl+C the foreground script.
+//! Quit-to-terminal note: quitting never relaunches by itself — the exit
+//! code (42) tells the wrappers to stop too, so you land on a persistent
+//! shell. Logging out (or just running the deck again) brings the menu
+//! back on a getty-autologin console.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -47,6 +49,9 @@ const AUTO_RADIUS_M: f64 = 300.0;
 /// Seconds between "go out into the open" reminders while AUTO waits.
 /// AUTO waits indefinitely for a lock — there is no fallback location.
 const DEFAULT_FIX_HINT_S: u64 = 30;
+/// Quit code: every wrapper (zdeck-auto.sh, zdeck-main.sh, login hook)
+/// treats this as "user wants a terminal" and stops relaunching.
+const QUIT_CODE: i32 = 42;
 /// Settings file (next to the binary, so ~/zdeck/zdeck.conf on the deck).
 const CONFIG_FILE: &str = "zdeck.conf";
 /// Modes the launcher can start.
@@ -629,22 +634,14 @@ fn settings_menu(path: &Path, cfg: &mut DeckConfig) {
     println!();
 }
 
-/// Quit to a normal shell. Replaces this process, so the user gets a real
-/// terminal; exiting it returns to whatever launched us (deck menu / login).
+/// Quit to a normal terminal: exit with QUIT_CODE so the whole chain
+/// (game loop, main script, login hook) unwinds to the login shell
+/// instead of relaunching. Logging out brings the deck menu back.
 fn quit_to_shell() -> ! {
     raw_off();
     clear_screen();
-    println!("{DIM}Z-DECK closed — normal terminal. `exit`/logout returns to the deck.{RST}");
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        let err = Command::new(&shell).arg("-l").exec();
-        eprintln!("could not start {shell}: {err}");
-        std::process::exit(1);
-    }
-    #[cfg(not(unix))]
-    std::process::exit(42);
+    println!("{DIM}Z-DECK closed — normal terminal. Log out to return to the deck menu.{RST}");
+    std::process::exit(QUIT_CODE);
 }
 
 // ---- AUTO helpers: live GPS fix + fresh map ----

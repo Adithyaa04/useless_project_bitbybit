@@ -3,7 +3,7 @@
 #
 #   CardKB virtual keyboard  +  zdeck-auto.sh -> zdeck-run -> game
 #
-# This is what the ~/.bash_profile login hook execs on /dev/tty1, and what
+# This is what the ~/.bash_profile login hook runs on /dev/tty1, and what
 # zdeck.service runs when you opt into systemd. Direct use:
 #   ~/zdeck/zdeck-main.sh              # splash + launcher menu
 #   ~/zdeck/zdeck-main.sh --sim        # indoor testing, no GPS
@@ -21,6 +21,11 @@ set -u
 
 ZDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AUTO="$ZDIR/zdeck-auto.sh"
+
+# Sentinel: the tty1 login hook skips itself while this is set, so nested
+# login shells (and the shell that "Quit to terminal" lands on) don't
+# relaunch the deck.
+export ZDECK_ACTIVE=1
 
 ARGS=()
 CHECK_ONLY=0

@@ -83,22 +83,21 @@ Usual culprits, in order:
 | `ExecStart` points at missing file | `cp binary/pi3-arm64/zdeck-cardkb ~/zdeck/ && sudo ./cardkb/setup.sh` |
 | device registered, apps ignore keys | focus a console editor (not SSH): `cat /proc/bus/input/devices \| grep -A5 CardKB` |
 
-## DietPi autostart (custom.sh)
+## Deck autostart (standard Debian, incl. DietPi)
 
-`install-autostart.sh` detects DietPi and writes the launch command into
-`/var/lib/dietpi-autostart/custom.sh` (old images) or
-`/var/lib/dietpi/dietpi-autostart/custom.sh` (new images):
+`install-autostart.sh` uses stock Debian mechanisms — no DietPi tooling:
 
-```sh
-#!/bin/dash
-# Z-DECK kiosk ...
-exec "/home/dietpi/zdeck/zdeck-main.sh"
-```
+1. Getty auto-login drop-in
+   `/etc/systemd/system/getty@tty1.service.d/zdeck-autologin.conf`
+   (same thing raspi-config writes), then reboot.
+2. A `~/.bash_profile` hook that **runs** `~/zdeck/zdeck-main.sh` as a
+   child on tty1 (never `exec`, never over SSH).
 
-Then: `sudo dietpi-autostart` → **Custom script (foreground, with auto
-login)** → reboot. Manual equivalent: edit that file, paste the `exec`
-line, keep it executable. Remove again with
-`install-autostart.sh --uninstall` (restores your backup).
+Quit chain: launcher *Quit to terminal* exits 42 → game loop stops →
+main script ends → hook returns → persistent login shell. Log out (or
+run `~/zdeck/zdeck-main.sh`) to return to the menu. Any pre-existing
+DietPi `custom.sh` Z-DECK entry is cleaned up (backup restored) by the
+installer; `--uninstall` removes the drop-in and the hook.
 
 ## Wiring
 

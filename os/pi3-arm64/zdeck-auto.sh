@@ -118,6 +118,13 @@ while true; do
     code=$?
     elapsed=$((SECONDS - start))
     echo
+    # Quit code 42 = user picked "Quit to terminal": unwind to a shell,
+    # never relaunch (and never count it as a crash).
+    if [[ "$code" -eq 42 ]]; then
+        echo "Deck quit to terminal — not restarting."
+        echo "Log out (or run $RUN) to return to the deck menu."
+        exit 0
+    fi
     echo "Z-DECK exited (code $code) after ${elapsed}s."
     if [[ "$code" -ne 0 && "$elapsed" -lt "$FAST_EXIT_S" ]]; then
         strikes=$((strikes + 1))
