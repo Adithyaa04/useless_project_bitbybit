@@ -1,14 +1,17 @@
 [Unit]
-Description=Z-DECK zombie chase (Pi 3 64-bit kiosk, alternative to login hook)
+Description=Z-DECK zombie chase (Pi 3 64-bit kiosk, systemd alternative to login hook)
 After=multi-user.target
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=simple
+# install-autostart.sh --with-systemd rewrites User=, WorkingDirectory= and
+# ExecStart= for your actual user/home. Opt-in only: do NOT enable this
+# together with the ~/.bash_profile login hook or the game launches twice.
 User=pi
 WorkingDirectory=/home/pi/zdeck
-ExecStart=/home/pi/zdeck/zdeck-auto.sh --auto
+ExecStart=/home/pi/zdeck/zdeck-main.sh --auto
 Restart=always
 RestartSec=5
 StandardInput=tty
@@ -19,4 +22,4 @@ TTYReset=yes
 TTYVHangup=yes
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target

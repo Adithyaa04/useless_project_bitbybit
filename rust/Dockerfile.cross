@@ -55,6 +55,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
           "/src/target/${TARGET}/release/zdeck-gps" \
           "/src/target/${TARGET}/release/zdeck-fetch" \
           "/src/target/${TARGET}/release/zdeck-run" \
+          "/src/target/${TARGET}/release/zdeck-cardkb" \
           "/out/${TARGET}/" \
     && file "/out/${TARGET}/"* || true
 

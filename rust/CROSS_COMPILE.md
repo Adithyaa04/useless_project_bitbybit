@@ -15,8 +15,8 @@ rootless Podman (`CONTAINER_ENGINE=podman ./rust/build-pi.sh` to force it).
 Output:
 
 ```text
-binary/pi3-armv7/zdeck-game  zdeck-gps  zdeck-fetch  zdeck-run   (ARMv7, hard-float)
-binary/pi3-arm64/zdeck-game  zdeck-gps  zdeck-fetch  zdeck-run   (AArch64)
+binary/pi3-armv7/zdeck-game  zdeck-gps  zdeck-fetch  zdeck-run  zdeck-cardkb   (ARMv7, hard-float)
+binary/pi3-arm64/zdeck-game  zdeck-gps  zdeck-fetch  zdeck-run  zdeck-cardkb   (AArch64)
 ```
 
 ## Which one do I need?
@@ -34,7 +34,7 @@ Check on the Pi with `uname -m`: `armv7l` → armv7 folder, `aarch64` → arm64 
 2. `rust/.cargo/config.toml` tells Cargo which cross-linker to use per target
    (used both inside Docker and for local cross builds).
 3. `rust/rust-toolchain.toml` pins the toolchain (1.97) + targets for reproducibility.
-4. `rust/build-pi.sh` builds the image, `docker create` + `docker cp`s the four
+4. `rust/build-pi.sh` builds the image, `docker create` + `docker cp`s the five
    release binaries out into `./binary/<profile>/`, and runs `file` on them.
 
 ## Manual Docker commands (no script)
@@ -46,7 +46,7 @@ docker build -f rust/Dockerfile.cross \
 
 id=$(docker create zdeck-cross:armv7)
 mkdir -p binary/pi3-armv7
-for b in zdeck-game zdeck-gps zdeck-fetch zdeck-run; do
+for b in zdeck-game zdeck-gps zdeck-fetch zdeck-run zdeck-cardkb; do
   docker cp "$id:/out/armv7-unknown-linux-gnueabihf/$b" binary/pi3-armv7/
 done
 docker rm "$id"

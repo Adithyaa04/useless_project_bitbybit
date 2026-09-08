@@ -5,8 +5,12 @@ After=multi-user.target
 [Service]
 Type=simple
 # setup.sh rewrites User= and ExecStart= for your actual user/home.
+# Preferred driver is the Rust binary (no Python needed):
+#   ExecStart=/home/<user>/zdeck/zdeck-cardkb
+# Legacy Python fallback:
+#   ExecStart=/usr/bin/python3 /home/<user>/cardkb_keyboard.py
 User=dietpi
-ExecStart=/usr/bin/python3 /home/dietpi/cardkb_keyboard.py
+ExecStart=/home/dietpi/zdeck/zdeck-cardkb
 Restart=always
 RestartSec=2
 

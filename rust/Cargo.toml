@@ -25,6 +25,10 @@ path = "src/bin/zdeck-fetch.rs"
 name = "zdeck-run"
 path = "src/bin/zdeck-run.rs"
 
+[[bin]]
+name = "zdeck-cardkb"
+path = "src/bin/zdeck-cardkb.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
@@ -33,3 +37,5 @@ anyhow = "1"
 crossterm = "0.28"
 ratatui = "0.29"
 ureq = "2"
+evdev = "0.13"
+i2cdev = "0.6"

@@ -125,11 +125,14 @@ else
   warn "/dev/i2c-1 missing — reboot first, then re-run: sudo i2cdetect -y 1"
 fi
 
-# ------------------------------------------------- 3. Python deps via uv
-msg "Step 4/7: installing smbus2 + evdev with uv..."
+# ------------------------------------------------- 3. Python deps via uv (OPTIONAL)
+# The Rust driver (zdeck-cardkb) needs no Python at all — it is the default.
+# This step only matters for the legacy cardkb_keyboard.py fallback, so it
+# must NEVER abort setup (e.g. PEP 668 "externally managed environment").
+msg "Step 4/7: trying optional Python deps (smbus2 + evdev, legacy fallback)..."
 if ! command -v uv >/dev/null 2>&1; then
-  msg "uv not found, installing..."
-  curl -LsSf https://astral.sh/uv/install.sh | sh
+  msg "uv not found, trying to install (best effort)..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh || warn "uv installer failed, continuing."
   export PATH="$HOME/.local/bin:$PATH"
   if [ -n "${SUDO_USER:-}" ]; then
     USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
@@ -143,11 +146,20 @@ fi
 if ! command -v uv >/dev/null 2>&1; then
   export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
 fi
-command -v uv >/dev/null 2>&1 || { err "uv install failed. Install manually: curl -LsSf https://astral.sh/uv/install.sh | sh"; exit 1; }
-
-# uv instead of: pip3 install smbus2 evdev --break-system-packages
-uv pip install --system smbus2 evdev
-msg "Python deps installed."
+if command -v uv >/dev/null 2>&1; then
+  # NOTE: --break-system-packages is required on PEP 668 distros
+  # (that "externally managed environment" error); harmless elsewhere.
+  if uv pip install --system --break-system-packages smbus2 evdev; then
+    msg "Python deps installed (legacy fallback ready)."
+  else
+    warn "uv install failed — skipping Python fallback (Rust driver unaffected)."
+  fi
+elif python3 -m pip install --break-system-packages smbus2 evdev 2>/dev/null; then
+  msg "Python deps installed via pip (legacy fallback ready)."
+else
+  warn "No uv/pip path worked — skipping Python fallback (Rust driver unaffected)."
+fi
+msg "CardKB driver: Rust zdeck-cardkb (no Python needed)."
 
 # ------------------------------------------------- 4. uinput setup
 msg "Step 5/7: configuring uinput..."
@@ -182,7 +194,19 @@ msg "Then type in a text editor, and verify with:"
 msg "  cat /proc/bus/input/devices | grep -A5 CardKB"
 
 # ------------------------------------------------- 6. systemd service (autostart)
-msg "Step 7/7: creating $SERVICE_DST ..."
+# Prefer the Rust driver (no Python); fall back to cardkb_keyboard.py.
+RUST_BIN="$TARGET_HOME/zdeck/zdeck-cardkb"
+if [ -x "$RUST_BIN" ]; then
+  EXEC_LINE="ExecStart=$RUST_BIN"
+  msg "Step 7/7: creating $SERVICE_DST (Rust driver: $RUST_BIN) ..."
+elif RUST_BIN_SYS="$(command -v zdeck-cardkb 2>/dev/null)" && [ -n "$RUST_BIN_SYS" ]; then
+  EXEC_LINE="ExecStart=$RUST_BIN_SYS"
+  msg "Step 7/7: creating $SERVICE_DST (Rust driver: $RUST_BIN_SYS) ..."
+else
+  EXEC_LINE="ExecStart=/usr/bin/python3 $KEYBOARD_DST"
+  msg "Step 7/7: creating $SERVICE_DST (Python fallback) ..."
+  msg "Tip: build/install the Rust driver instead: ./rust/build-pi.sh arm64, then re-run install-autostart.sh"
+fi
 cat > "$SERVICE_DST" <<EOF
 [Unit]
 Description=M5Stack CardKB virtual keyboard (I2C 0x5F -> uinput)
@@ -191,7 +215,7 @@ After=multi-user.target
 [Service]
 Type=simple
 User=$TARGET_USER
-ExecStart=/usr/bin/python3 $KEYBOARD_DST
+$EXEC_LINE
 Restart=always
 RestartSec=2
 

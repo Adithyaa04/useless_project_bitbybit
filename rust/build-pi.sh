@@ -35,7 +35,7 @@ echo "Container engine: $ENGINE"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUST_DIR="$REPO_ROOT/rust"
 BIN_DIR="$REPO_ROOT/binary"
-BINS=(zdeck-game zdeck-gps zdeck-fetch zdeck-run)
+BINS=(zdeck-game zdeck-gps zdeck-fetch zdeck-run zdeck-cardkb)
 
 declare -A TARGETS=(
   [armv7]=armv7-unknown-linux-gnueabihf

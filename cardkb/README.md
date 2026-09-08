@@ -1,28 +1,41 @@
 # M5Stack CardKB on Raspberry Pi / DietPi
 
 I2C mini keyboard (fixed address `0x5F`) exposed to the whole OS as a
-virtual USB keyboard via `evdev`/`uinput`.
+virtual USB keyboard via `uinput`.
+
+Default driver is now **Rust** (`zdeck-cardkb`, no Python needed).
+The Python script remains as a legacy fallback.
 
 ## Folder contents
 
 | File | Purpose |
 |---|---|
-| `cardkb_keyboard.py` | Polls `0x5F` on `/dev/i2c-1`, emits key events as `CardKB-Virtual-Keyboard` |
-| `setup.sh` | Full one-shot setup: I2C, deps via `uv`, uinput, service |
+| `../rust/src/bin/zdeck-cardkb.rs` | Rust driver: polls `0x5F` on `/dev/i2c-1`, emits `CardKB-Virtual-Keyboard` (default) |
+| `cardkb_keyboard.py` | Legacy Python fallback (needs `smbus2`+`evdev`) |
+| `setup.sh` | Full one-shot setup: I2C, uinput, service (Python step is best-effort only) |
 | `cardkb.service` | Reference unit file (setup.sh installs a user-adjusted copy) |
 
 ## Quick start (on the Pi)
 
+Rust driver (recommended — no Python):
+
 ```bash
-cd cardkb
-chmod +x setup.sh
-sudo ./setup.sh
+./rust/build-pi.sh arm64   # or copy binary/pi3-arm64/* to the Pi
+sudo ./cardkb/setup.sh     # sets up I2C + uinput, points service at zdeck-cardkb
 # reboot when asked, then:
 ls /dev/i2c*                 # expect /dev/i2c-1
 sudo i2cdetect -y 1          # expect 5F in the grid
-python3 ~/cardkb_keyboard.py # manual test — type in any editor
+~/zdeck/zdeck-cardkb         # manual test — type in any editor
 cat /proc/bus/input/devices | grep -A5 CardKB
 sudo systemctl status cardkb.service
+```
+
+Legacy Python fallback (only if you prefer it):
+
+```bash
+cd cardkb
+sudo ./setup.sh              # Python install step is best-effort; setup no longer aborts on PEP 668 errors
+python3 ~/cardkb_keyboard.py
 ```
 
 Non-interactive / no-reboot variants:
