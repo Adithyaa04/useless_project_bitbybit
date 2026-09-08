@@ -102,7 +102,7 @@ clear
 stty sane 2>/dev/null || true
 setterm -blank 0 -powersave off -cursor on 2>/dev/null || true
 
-echo "Z-DECK game loop (pi3-arm64): starting zdeck-run ${ARGS[*]:-"(splash + AUTO/SIM countdown)"} ..."
+echo "Z-DECK game loop (pi3-arm64): starting zdeck-run ${ARGS[*]:-"(splash + launcher menu)"} ..."
 
 if [[ "$NO_LOOP" -eq 1 ]]; then
     exec "$RUN" "${ARGS[@]}"
@@ -110,8 +110,9 @@ fi
 
 strikes=0
 while true; do
-    # No args = splash + 5 s AUTO/SIM countdown (AUTO wins on timeout).
-    # Pass-through allows `zdeck-auto.sh --sim` for indoor testing.
+    # No args = splash + launcher menu (Start/Settings/Quit).
+    # Pass-through allows `zdeck-auto.sh --sim` for indoor testing,
+    # or `zdeck-auto.sh --auto` for menu-free AUTO kiosk.
     start=$SECONDS
     "$RUN" "${ARGS[@]}"
     code=$?

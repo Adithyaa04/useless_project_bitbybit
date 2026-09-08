@@ -5,7 +5,7 @@
 #
 # This is what the ~/.bash_profile login hook execs on /dev/tty1, and what
 # zdeck.service runs when you opt into systemd. Direct use:
-#   ~/zdeck/zdeck-main.sh              # splash + AUTO/SIM countdown
+#   ~/zdeck/zdeck-main.sh              # splash + launcher menu
 #   ~/zdeck/zdeck-main.sh --sim        # indoor testing, no GPS
 #   ~/zdeck/zdeck-main.sh --check-only # checks only, starts nothing
 #   ~/zdeck/zdeck-main.sh --no-cardkb  # skip keyboard, game only

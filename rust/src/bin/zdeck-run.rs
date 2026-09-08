@@ -1,24 +1,32 @@
 //! `zdeck-run` — main launcher (Rust port of `run.py`).
 //!
-//! Pi 3 64-bit kiosk flow:
+//! Pi 3 64-bit boot flow:
 //! 1. Fullscreen splash with the Z-DECK logo (fresh boot every time, never
 //!    "continues where it left").
-//! 2. Mode prompt with a 5 s countdown, defaulting to AUTO (GPS on
-//!    `/dev/ttyAMA0`, the only GPS device on the deck).
+//! 2. Launcher menu — ↑/↓ + Enter: `Start` (saved default mode), `Settings`
+//!    (edit + persist defaults to `zdeck.conf` next to the binary), or
+//!    `Quit to terminal` (drops to a normal shell; exiting it returns to
+//!    the deck). Works with the CardKB arrows, USB keyboards, and 1/2/3.
 //! 3. AUTO: wait (as long as needed) for a live GPS fix, reminding the user
-//!    to step into the open -> fetch a fresh 300 m map around it -> launch
+//!    to step into the open -> fetch a fresh map around it -> launch
 //!    `zdeck-game` in GPS-serial mode. No fallback location: without a lock
 //!    the deck keeps waiting, never starts on a stale/default map.
 //!    The game itself keeps polling the sensor and reloads areas as you
 //!    walk out of them.
 //! 4. SIM: indoor WASD testing without hardware.
 //!
+//! Non-interactive (kiosk/autostart/SSH) flows bypass the menu:
 //! ```sh
-//! zdeck-run                 # splash + 5s AUTO/SIM countdown (kiosk default)
-//! zdeck-run --auto          # skip countdown, straight to AUTO
+//! zdeck-run                 # splash + launcher menu (default)
+//! zdeck-run --auto          # skip menu, straight to AUTO (kiosk)
 //! zdeck-run --sim           # skip prompts, sim mode
 //! zdeck-run --gps /dev/ttyAMA0 --baud 9600
 //! ```
+//!
+//! Quit-to-terminal note: under DietPi's "Custom script (foreground)"
+//! autostart the menu IS the session, so quitting the shell (or the
+//! launcher) returns to a fresh login/launcher — by design. For a
+//! persistent shell that survives, Ctrl+C the foreground script.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -28,6 +36,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 use zdeck::proto::GpsFix;
 
 /// The ONLY GPS device on the deck.
@@ -35,22 +44,24 @@ const DEFAULT_GPS_PORT: &str = "/dev/ttyAMA0";
 const DEFAULT_BAUD: u32 = 9600;
 /// Fresh play-area radius fetched around every live fix, meters.
 const AUTO_RADIUS_M: f64 = 300.0;
-/// Mode-prompt countdown, seconds.
-const MODE_COUNTDOWN_S: u64 = 5;
 /// Seconds between "go out into the open" reminders while AUTO waits.
 /// AUTO waits indefinitely for a lock — there is no fallback location.
 const DEFAULT_FIX_HINT_S: u64 = 30;
+/// Settings file (next to the binary, so ~/zdeck/zdeck.conf on the deck).
+const CONFIG_FILE: &str = "zdeck.conf";
+/// Modes the launcher can start.
+const MODES: [&str; 4] = ["auto", "sim", "serial", "gpio"];
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(
     name = "zdeck-run",
-    about = "Zombie Deck launcher: splash, AUTO(GPS)/SIM pick, fetch map, run game"
+    about = "Zombie Deck launcher: splash, menu, AUTO(GPS)/SIM pick, fetch map, run game"
 )]
 struct Args {
     /// Launch directly in sim (WASD) mode
     #[arg(long)]
     sim: bool,
-    /// Skip the 5s countdown and go straight to AUTO (kiosk/autostart)
+    /// Skip the launcher menu and go straight to AUTO (kiosk/autostart)
     #[arg(long)]
     auto: bool,
     /// Launch directly in serial GPS mode (e.g. /dev/ttyAMA0)
@@ -84,6 +95,9 @@ struct Args {
     /// Directory containing the zdeck-* binaries (default: this exe's dir, then PATH)
     #[arg(long, value_name = "DIR")]
     bin_dir: Option<String>,
+    /// Settings file (default: zdeck.conf next to this exe)
+    #[arg(long, value_name = "PATH")]
+    config: Option<String>,
     /// Test hook: run the game without a TUI
     #[arg(long)]
     headless: bool,
@@ -104,6 +118,115 @@ const RST: &str = "\x1b[0m";
 fn clear_screen() {
     print!("\x1b[2J\x1b[H");
     let _ = std::io::stdout().flush();
+}
+
+// ---- persistent settings (zdeck.conf next to the binary) ----
+
+/// Everything the Settings screen can edit. CLI flags always win over
+/// these for the current session; the file only feeds the launcher.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DeckConfig {
+    /// Which mode `Start` launches: auto | sim | serial | gpio
+    default_mode: String,
+    /// SIM session centre + map radius (indoor testing, no GPS)
+    sim_lat: f64,
+    sim_lon: f64,
+    sim_radius: f64,
+    /// AUTO fetch radius around the live fix (the "map loading radius")
+    fetch_radius: f64,
+    /// GPS serial port for `serial` mode / AUTO override
+    gps_port: String,
+    /// GPIO pin (BCM) for `gpio` bit-bang mode
+    gpio_pin: u32,
+    /// GPS baud rate for every hardware mode
+    baud: u32,
+    /// Seconds between open-sky reminders while AUTO waits for a lock
+    fix_hint: u64,
+}
+
+impl Default for DeckConfig {
+    fn default() -> Self {
+        Self {
+            default_mode: "auto".to_string(),
+            sim_lat: 9.9649,
+            sim_lon: 76.2868,
+            sim_radius: AUTO_RADIUS_M,
+            fetch_radius: AUTO_RADIUS_M,
+            gps_port: DEFAULT_GPS_PORT.to_string(),
+            gpio_pin: 16,
+            baud: DEFAULT_BAUD,
+            fix_hint: DEFAULT_FIX_HINT_S,
+        }
+    }
+}
+
+impl DeckConfig {
+    fn sanitise(&mut self) {
+        if !MODES.contains(&self.default_mode.as_str()) {
+            self.default_mode = "auto".to_string();
+        }
+        self.sim_lat = self.sim_lat.clamp(-90.0, 90.0);
+        self.sim_lon = self.sim_lon.clamp(-180.0, 180.0);
+        self.sim_radius = self.sim_radius.clamp(50.0, 2000.0);
+        self.fetch_radius = self.fetch_radius.clamp(50.0, 2000.0);
+        if self.gpio_pin > 27 {
+            self.gpio_pin = 16;
+        }
+        if self.baud == 0 {
+            self.baud = DEFAULT_BAUD;
+        }
+        if self.fix_hint < 10 {
+            self.fix_hint = 10;
+        }
+        if self.gps_port.trim().is_empty() {
+            self.gps_port = DEFAULT_GPS_PORT.to_string();
+        }
+    }
+
+    /// Next selectable default mode (Enter on the mode row cycles these).
+    fn cycle_mode(&mut self) {
+        let i = MODES
+            .iter()
+            .position(|m| *m == self.default_mode)
+            .unwrap_or(0);
+        self.default_mode = MODES[(i + 1) % MODES.len()].to_string();
+    }
+}
+
+/// Config path: --config flag, else zdeck.conf next to this exe.
+fn config_path(explicit: Option<&str>) -> PathBuf {
+    if let Some(p) = explicit {
+        return PathBuf::from(p);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            return dir.join(CONFIG_FILE);
+        }
+    }
+    PathBuf::from(CONFIG_FILE)
+}
+
+fn load_config(path: &Path) -> DeckConfig {
+    match std::fs::read_to_string(path) {
+        Ok(text) => match serde_json::from_str::<DeckConfig>(&text) {
+            Ok(mut cfg) => {
+                cfg.sanitise();
+                cfg
+            }
+            Err(e) => {
+                println!("  {YEL}○ {CONFIG_FILE} invalid ({e}) — using defaults{RST}");
+                DeckConfig::default()
+            }
+        },
+        Err(_) => DeckConfig::default(), // first run: no file yet
+    }
+}
+
+fn save_config(path: &Path, cfg: &DeckConfig) -> Result<()> {
+    let text = serde_json::to_string_pretty(cfg)?;
+    std::fs::write(path, text)
+        .with_context(|| format!("write {}", path.display()))?;
+    Ok(())
 }
 
 /// Fullscreen splash: clear + big logo centered on the TFT, fresh every
@@ -198,59 +321,330 @@ fn ensure_bins(args: &Args) -> Result<Bins> {
     Ok(bins)
 }
 
-// ---- 5-second AUTO/SIM countdown (default AUTO) ----
+// ---- launcher menu (↑/↓ + Enter) + settings editor ----
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode {
-    Auto,
-    Sim,
+/// What the launcher menu returns.
+enum Launch {
+    Start,
+    Settings,
+    Quit,
 }
 
-/// Fullscreen prompt: "AUTO in Ns — A now, S for SIM". Returns the pick.
-/// Falls back to AUTO when stdin is not a TTY (kiosk/test pipes).
-fn countdown_pick() -> Mode {
-    use crossterm::event::{self, Event, KeyCode};
+fn raw_on() {
+    let _ = crossterm::terminal::enable_raw_mode();
+}
 
-    // Try raw mode; if there is no TTY (piped test), default to AUTO.
-    let raw_ok = crossterm::terminal::enable_raw_mode().is_ok();
-    let deadline = Instant::now() + Duration::from_secs(MODE_COUNTDOWN_S);
-    let mut pick: Option<Mode> = None;
+fn raw_off() {
+    let _ = crossterm::terminal::disable_raw_mode();
+}
 
-    // We print via stderr-safe println; raw mode keeps it readable enough.
-    while Instant::now() < deadline {
-        let left = deadline.saturating_duration_since(Instant::now());
-        let secs = left.as_secs() + 1; // ceil-ish display
-        print!(
-            "\r{BOLD}[AUTO]{RST} GPS {CYA}{DEFAULT_GPS_PORT}{RST} in {YEL}{BOLD}{secs}s{RST}  — press {GRN}{BOLD}A{RST}=AUTO now  {YEL}{BOLD}S{RST}=SIM (WASD)   "
-        );
-        let _ = std::io::stdout().flush();
-        if raw_ok && event::poll(Duration::from_millis(100)).unwrap_or(false) {
+/// One-line summary of what `Start` will do with this config.
+fn describe_start(cfg: &DeckConfig) -> String {
+    match cfg.default_mode.as_str() {
+        "sim" => format!(
+            "SIM · WASD @ {:.4},{:.4} r={:.0}m",
+            cfg.sim_lat, cfg.sim_lon, cfg.sim_radius
+        ),
+        "serial" => format!(
+            "GPS serial {} @ {} baud · fresh {:.0}m map",
+            cfg.gps_port, cfg.baud, cfg.fetch_radius
+        ),
+        "gpio" => format!(
+            "GPS gpio{} @ {} baud · fresh {:.0}m map",
+            cfg.gpio_pin, cfg.baud, cfg.fetch_radius
+        ),
+        _ => format!(
+            "AUTO · GPS {} @ {} baud · fresh {:.0}m map",
+            cfg.gps_port, cfg.baud, cfg.fetch_radius
+        ),
+    }
+}
+
+fn draw_launcher(sel: usize, cfg: &DeckConfig) {
+    clear_screen();
+    println!("{GRN}{BOLD}  Z — D E C K{RST}{DIM} — Bit By Bit{RST}\n");
+    let items = [
+        format!("Start  ({})", describe_start(cfg)),
+        "Settings".to_string(),
+        "Quit to terminal".to_string(),
+    ];
+    for (i, label) in items.iter().enumerate() {
+        if i == sel {
+            println!("{BOLD}{GRN}  > {label}{RST}");
+        } else {
+            println!("{DIM}    {label}{RST}");
+        }
+    }
+    println!("\n{DIM}  ↑/↓ or 1-3 · Enter select · Esc quits{RST}");
+    let _ = std::io::stdout().flush();
+}
+
+/// Arrow-key menu. Returns when the user picks (or Esc/Ctrl+C = Quit).
+/// Number keys 1/2/3 and j/k also work (CardKB-friendly).
+fn launcher_menu(cfg: &DeckConfig) -> Launch {
+    use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+
+    raw_on();
+    let items = 3;
+    let mut sel = 0usize;
+    draw_launcher(sel, cfg);
+    loop {
+        if event::poll(Duration::from_millis(200)).unwrap_or(false) {
             if let Ok(Event::Key(k)) = event::read() {
                 match k.code {
-                    KeyCode::Char('s' | 'S') => {
-                        pick = Some(Mode::Sim);
-                        break;
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        sel = (sel + items - 1) % items;
+                        draw_launcher(sel, cfg);
                     }
-                    KeyCode::Char('a' | 'A') | KeyCode::Enter => {
-                        pick = Some(Mode::Auto);
-                        break;
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        sel = (sel + 1) % items;
+                        draw_launcher(sel, cfg);
                     }
+                    KeyCode::Enter => break,
                     KeyCode::Esc => {
-                        pick = Some(Mode::Sim);
+                        sel = 2;
+                        break;
+                    }
+                    KeyCode::Char('1') => {
+                        sel = 0;
+                        break;
+                    }
+                    KeyCode::Char('2') => {
+                        sel = 1;
+                        break;
+                    }
+                    KeyCode::Char('3') => {
+                        sel = 2;
+                        break;
+                    }
+                    KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        sel = 2;
                         break;
                     }
                     _ => {}
                 }
             }
-        } else {
-            std::thread::sleep(Duration::from_millis(100));
         }
     }
-    if raw_ok {
-        let _ = crossterm::terminal::disable_raw_mode();
-    }
+    raw_off();
     println!();
-    pick.unwrap_or(Mode::Auto)
+    match sel {
+        0 => Launch::Start,
+        1 => Launch::Settings,
+        _ => Launch::Quit,
+    }
+}
+
+/// Line-input prompt (raw mode off while typing). Empty = keep current.
+fn ask_line(prompt: &str, current: &str) -> Option<String> {
+    raw_off();
+    print!("{BOLD}{prompt}{RST} {DIM}[{current}]{RST}: ");
+    let _ = std::io::stdout().flush();
+    let mut s = String::new();
+    let ok = std::io::stdin().read_line(&mut s).is_ok();
+    raw_on();
+    if !ok {
+        return None;
+    }
+    let s = s.trim().to_string();
+    if s.is_empty() { None } else { Some(s) }
+}
+
+fn parse_f64(s: &str) -> Option<f64> {
+    s.trim().parse::<f64>().ok().filter(|v| v.is_finite())
+}
+
+fn persist(path: &Path, cfg: &DeckConfig, note: &mut String) {
+    match save_config(path, cfg) {
+        Ok(()) => *note = format!("saved {}", path.display()),
+        Err(e) => *note = format!("SAVE FAILED: {e:#}"),
+    }
+}
+
+fn draw_settings(sel: usize, cfg: &DeckConfig, note: &str) {
+    clear_screen();
+    println!("{GRN}{BOLD}  Settings{RST}{DIM} — Enter edits · Esc back (edits save instantly){RST}\n");
+    let rows = [
+        format!("Default mode (Start launches this): {}", cfg.default_mode),
+        format!("SIM latitude: {}", cfg.sim_lat),
+        format!("SIM longitude: {}", cfg.sim_lon),
+        format!("SIM map radius (m): {:.0}", cfg.sim_radius),
+        format!("AUTO fetch radius (m): {:.0}", cfg.fetch_radius),
+        format!("GPS serial port: {}", cfg.gps_port),
+        format!("GPIO pin (BCM): {}", cfg.gpio_pin),
+        format!("Baud rate: {}", cfg.baud),
+        format!("GPS fix hint every (s): {}", cfg.fix_hint),
+        "Reset all to defaults".to_string(),
+        "Back".to_string(),
+    ];
+    for (i, row) in rows.iter().enumerate() {
+        if i == sel {
+            println!("{BOLD}{GRN}  > {row}{RST}");
+        } else {
+            println!("{DIM}    {row}{RST}");
+        }
+    }
+    if note.is_empty() {
+        println!("\n{DIM}  ↑/↓ move · Enter edit/cycle · Esc back{RST}");
+    } else {
+        println!("\n{DIM}  {note}{RST}");
+    }
+    let _ = std::io::stdout().flush();
+}
+
+/// Settings editor. Every successful edit is sanitised + saved at once.
+fn settings_menu(path: &Path, cfg: &mut DeckConfig) {
+    use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+
+    const ROWS: usize = 11;
+    raw_on();
+    let mut sel = 0usize;
+    let mut note = String::new();
+    loop {
+        draw_settings(sel, cfg, &note);
+        note.clear();
+        let mut back = false;
+        if event::poll(Duration::from_millis(200)).unwrap_or(false) {
+            if let Ok(Event::Key(k)) = event::read() {
+                match k.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        sel = (sel + ROWS - 1) % ROWS;
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        sel = (sel + 1) % ROWS;
+                    }
+                    KeyCode::Esc => break,
+                    KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => break,
+                    KeyCode::Enter | KeyCode::Char(' ') => match sel {
+                        0 => {
+                            cfg.cycle_mode();
+                            persist(path, cfg, &mut note);
+                        }
+                        1 => {
+                            if let Some(v) = ask_line("SIM latitude (-90..90)", &cfg.sim_lat.to_string())
+                            {
+                                match parse_f64(&v) {
+                                    Some(f) => {
+                                        cfg.sim_lat = f.clamp(-90.0, 90.0);
+                                        persist(path, cfg, &mut note);
+                                    }
+                                    None => note = "invalid number — kept old".to_string(),
+                                }
+                            }
+                        }
+                        2 => {
+                            if let Some(v) = ask_line("SIM longitude (-180..180)", &cfg.sim_lon.to_string())
+                            {
+                                match parse_f64(&v) {
+                                    Some(f) => {
+                                        cfg.sim_lon = f.clamp(-180.0, 180.0);
+                                        persist(path, cfg, &mut note);
+                                    }
+                                    None => note = "invalid number — kept old".to_string(),
+                                }
+                            }
+                        }
+                        3 => {
+                            if let Some(v) = ask_line("SIM map radius, meters (50..2000)", &format!("{:.0}", cfg.sim_radius))
+                            {
+                                match parse_f64(&v) {
+                                    Some(f) => {
+                                        cfg.sim_radius = f.clamp(50.0, 2000.0);
+                                        persist(path, cfg, &mut note);
+                                    }
+                                    None => note = "invalid number — kept old".to_string(),
+                                }
+                            }
+                        }
+                        4 => {
+                            if let Some(v) = ask_line("AUTO fetch radius, meters (50..2000)", &format!("{:.0}", cfg.fetch_radius))
+                            {
+                                match parse_f64(&v) {
+                                    Some(f) => {
+                                        cfg.fetch_radius = f.clamp(50.0, 2000.0);
+                                        persist(path, cfg, &mut note);
+                                    }
+                                    None => note = "invalid number — kept old".to_string(),
+                                }
+                            }
+                        }
+                        5 => {
+                            if let Some(v) = ask_line("GPS serial port", &cfg.gps_port) {
+                                if !v.trim().is_empty() {
+                                    cfg.gps_port = v.trim().to_string();
+                                    persist(path, cfg, &mut note);
+                                }
+                            }
+                        }
+                        6 => {
+                            if let Some(v) = ask_line("GPIO pin, BCM (0..27)", &cfg.gpio_pin.to_string()) {
+                                match v.trim().parse::<u32>() {
+                                    Ok(p) if p <= 27 => {
+                                        cfg.gpio_pin = p;
+                                        persist(path, cfg, &mut note);
+                                    }
+                                    _ => note = "invalid pin (0..27) — kept old".to_string(),
+                                }
+                            }
+                        }
+                        7 => {
+                            if let Some(v) = ask_line("Baud rate", &cfg.baud.to_string()) {
+                                match v.trim().parse::<u32>() {
+                                    Ok(b) if b > 0 => {
+                                        cfg.baud = b;
+                                        persist(path, cfg, &mut note);
+                                    }
+                                    _ => note = "invalid baud — kept old".to_string(),
+                                }
+                            }
+                        }
+                        8 => {
+                            if let Some(v) = ask_line("GPS fix hint every, seconds (>=10)", &cfg.fix_hint.to_string())
+                            {
+                                match v.trim().parse::<u64>() {
+                                    Ok(h) => {
+                                        cfg.fix_hint = h.max(10);
+                                        persist(path, cfg, &mut note);
+                                    }
+                                    _ => note = "invalid number — kept old".to_string(),
+                                }
+                            }
+                        }
+                        9 => {
+                            *cfg = DeckConfig::default();
+                            persist(path, cfg, &mut note);
+                            note = format!("reset to defaults; {}", note);
+                        }
+                        _ => back = true,
+                    },
+                    _ => {}
+                }
+            }
+        }
+        if back {
+            break;
+        }
+    }
+    raw_off();
+    println!();
+}
+
+/// Quit to a normal shell. Replaces this process, so the user gets a real
+/// terminal; exiting it returns to whatever launched us (deck menu / login).
+fn quit_to_shell() -> ! {
+    raw_off();
+    clear_screen();
+    println!("{DIM}Z-DECK closed — normal terminal. `exit`/logout returns to the deck.{RST}");
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+        let err = Command::new(&shell).arg("-l").exec();
+        eprintln!("could not start {shell}: {err}");
+        std::process::exit(1);
+    }
+    #[cfg(not(unix))]
+    std::process::exit(42);
 }
 
 // ---- AUTO helpers: live GPS fix + fresh map ----
@@ -485,6 +879,32 @@ fn launch_gps_serial(bins: &Bins, args: &Args, map: &Path, port: &str, baud: u32
 
 // ---- flows ----
 
+/// Fill session values from the saved config wherever the CLI left a
+/// default. (An explicitly passed flag equal to the default resolves the
+/// same way, so this is always safe.)
+fn apply_config(a: &mut Args, cfg: &DeckConfig) {
+    if a.baud == DEFAULT_BAUD {
+        a.baud = cfg.baud;
+    }
+    if a.fix_hint == DEFAULT_FIX_HINT_S {
+        a.fix_hint = cfg.fix_hint;
+    }
+    if a.lat.is_none() {
+        a.lat = Some(cfg.sim_lat);
+    }
+    if a.lon.is_none() {
+        a.lon = Some(cfg.sim_lon);
+    }
+}
+
+/// Session radius: SIM uses the SIM map radius, hardware modes the fetch
+/// radius — unless --radius was explicitly changed on the CLI.
+fn apply_radius(a: &mut Args, cfg: &DeckConfig, sim: bool) {
+    if (a.radius - AUTO_RADIUS_M).abs() < f64::EPSILON {
+        a.radius = if sim { cfg.sim_radius } else { cfg.fetch_radius };
+    }
+}
+
 fn run_auto(bins: &Bins, args: &Args) -> Result<()> {
     let port = args.gps.clone().unwrap_or_else(|| DEFAULT_GPS_PORT.to_string());
     let map = default_map_path(args.map.as_deref());
@@ -544,11 +964,31 @@ fn ensure_sim_map(bins: &Bins, args: &Args) -> Result<PathBuf> {
     Ok(path)
 }
 
+fn run_gpio(bins: &Bins, args: &Args) -> Result<()> {
+    let pin = args.gpio.unwrap_or(16);
+    let mp = ensure_sim_map(bins, args)?;
+    println!("\n{BOLD}[3/3] Launching game...{RST}");
+    println!("  {CYA}Mode: GPS GPIO bit-bang (GPIO{pin}){RST}");
+    let mut cmd = Command::new(&bins.game);
+    cmd.arg("--map").arg(&mp).args(["--gps-bin"]).arg(&bins.gps).args([
+        "--gps-source",
+        "gpio",
+        "--gpio",
+        &pin.to_string(),
+        "--baud",
+        &args.baud.to_string(),
+    ]);
+    forward_test_flags(&mut cmd, args);
+    println!("{DIM}$ {cmd:?}{RST}\n");
+    let _ = cmd.status();
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
     splash();
 
-    // Explicit legacy/direct flags bypass the countdown.
+    // Explicit legacy/direct flags bypass the launcher menu.
     if args.sim {
         let bins = ensure_bins(&args)?;
         let mp = ensure_sim_map(&bins, &args)?;
@@ -557,22 +997,7 @@ fn main() -> Result<()> {
     }
     if args.gpio.is_some() {
         let bins = ensure_bins(&args)?;
-        let mp = ensure_sim_map(&bins, &args)?;
-        let pin = args.gpio.unwrap_or(16);
-        println!("\n{BOLD}[3/3] Launching game...{RST}");
-        println!("  {CYA}Mode: GPS GPIO bit-bang (GPIO{pin}){RST}");
-        let mut cmd = Command::new(&bins.game);
-        cmd.arg("--map").arg(&mp).args(["--gps-bin"]).arg(&bins.gps).args([
-            "--gps-source",
-            "gpio",
-            "--gpio",
-            &pin.to_string(),
-            "--baud",
-            &args.baud.to_string(),
-        ]);
-        forward_test_flags(&mut cmd, &args);
-        println!("{DIM}$ {cmd:?}{RST}\n");
-        let _ = cmd.status();
+        run_gpio(&bins, &args)?;
         return Ok(());
     }
     if args.gps.is_some() && (args.auto || args.yes) {
@@ -583,25 +1008,146 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Kiosk default: countdown, AUTO wins on timeout.
+    if args.auto || args.yes {
+        // Non-interactive kiosk: straight to AUTO, no menu.
+        let bins = ensure_bins(&args)?;
+        println!("\n{BOLD}Mode: AUTO{RST} {DIM}(--auto, skipping menu){RST}");
+        return run_auto(&bins, &args);
+    }
+
+    // Interactive default: launcher menu. `Start` runs one session with
+    // the saved settings, then returns here; direct flags above bypass.
+    let cfg_path = config_path(args.config.as_deref());
+    let mut cfg = load_config(&cfg_path);
+    if cfg_path.is_file() {
+        println!("  {DIM}settings: {}{RST}", cfg_path.display());
+    }
     let bins = ensure_bins(&args)?;
-    let mode = if args.auto || args.yes {
-        println!("\n{BOLD}Mode: AUTO{RST} {DIM}(--auto, skipping countdown){RST}");
-        Mode::Auto
-    } else {
-        println!("\n{BOLD}How do you want to play?{RST} {DIM}(default AUTO){RST}");
-        println!("  {GRN}A{RST}) AUTO — GPS {DEFAULT_GPS_PORT} @ {} baud, fresh 300 m map", args.baud);
-        println!("  {YEL}S{RST}) SIM  — WASD keys, no hardware (indoor testing)");
-        countdown_pick()
-    };
-    match mode {
-        Mode::Sim => {
-            let mp = ensure_sim_map(&bins, &args)?;
-            launch_sim(&bins, &args, &mp);
-        }
-        Mode::Auto => {
-            run_auto(&bins, &args)?;
+    loop {
+        match launcher_menu(&cfg) {
+            Launch::Settings => settings_menu(&cfg_path, &mut cfg),
+            Launch::Quit => quit_to_shell(),
+            Launch::Start => {
+                let mut a = args.clone();
+                apply_config(&mut a, &cfg);
+                match cfg.default_mode.as_str() {
+                    "sim" => {
+                        apply_radius(&mut a, &cfg, true);
+                        let mp = ensure_sim_map(&bins, &a)?;
+                        launch_sim(&bins, &a, &mp);
+                    }
+                    "serial" => {
+                        apply_radius(&mut a, &cfg, false);
+                        a.gps = Some(cfg.gps_port.clone());
+                        run_auto(&bins, &a)?;
+                    }
+                    "gpio" => {
+                        apply_radius(&mut a, &cfg, false);
+                        a.gpio = Some(cfg.gpio_pin);
+                        run_gpio(&bins, &a)?;
+                    }
+                    _ => {
+                        apply_radius(&mut a, &cfg, false);
+                        run_auto(&bins, &a)?;
+                    }
+                }
+                println!("\n{DIM}session over — back to launcher.{RST}");
+                std::thread::sleep(Duration::from_secs(2));
+            }
         }
     }
-    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_roundtrip() {
+        let mut c = DeckConfig::default();
+        c.default_mode = "sim".to_string();
+        c.sim_lat = 1.5;
+        c.gps_port = "/dev/ttyUSB0".to_string();
+        let s = serde_json::to_string(&c).unwrap();
+        let d: DeckConfig = serde_json::from_str(&s).unwrap();
+        assert_eq!(d.default_mode, "sim");
+        assert!((d.sim_lat - 1.5).abs() < 1e-9);
+        assert_eq!(d.gps_port, "/dev/ttyUSB0");
+    }
+
+    #[test]
+    fn config_sanitise_clamps() {
+        let mut c = DeckConfig {
+            default_mode: "bogus".to_string(),
+            sim_lat: 999.0,
+            sim_lon: -999.0,
+            sim_radius: 5.0,
+            fetch_radius: 99999.0,
+            gps_port: "   ".to_string(),
+            gpio_pin: 99,
+            baud: 0,
+            fix_hint: 1,
+        };
+        c.sanitise();
+        assert_eq!(c.default_mode, "auto");
+        assert_eq!(c.sim_lat, 90.0);
+        assert_eq!(c.sim_lon, -180.0);
+        assert_eq!(c.sim_radius, 50.0);
+        assert_eq!(c.fetch_radius, 2000.0);
+        assert_eq!(c.gps_port, DEFAULT_GPS_PORT);
+        assert_eq!(c.gpio_pin, 16);
+        assert_eq!(c.baud, DEFAULT_BAUD);
+        assert_eq!(c.fix_hint, 10);
+    }
+
+    #[test]
+    fn config_cycle_round_robin() {
+        let mut c = DeckConfig::default();
+        assert_eq!(c.default_mode, "auto");
+        c.cycle_mode();
+        assert_eq!(c.default_mode, "sim");
+        c.cycle_mode();
+        assert_eq!(c.default_mode, "serial");
+        c.cycle_mode();
+        assert_eq!(c.default_mode, "gpio");
+        c.cycle_mode();
+        assert_eq!(c.default_mode, "auto");
+    }
+
+    #[test]
+    fn config_missing_file_gives_defaults() {
+        let d = load_config(Path::new("/nonexistent-dir/zdeck.conf"));
+        assert_eq!(d.default_mode, "auto");
+        assert_eq!(d.baud, DEFAULT_BAUD);
+    }
+
+    #[test]
+    fn config_invalid_json_gives_defaults() {
+        let p = std::env::temp_dir().join("zdeck-test-bad.conf");
+        std::fs::write(&p, "{not json").unwrap();
+        let d = load_config(&p);
+        assert_eq!(d.default_mode, "auto");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn config_save_load_roundtrip_file() {
+        let p = std::env::temp_dir().join("zdeck-test.conf");
+        let mut c = DeckConfig::default();
+        c.sim_radius = 500.0;
+        save_config(&p, &c).unwrap();
+        let d = load_config(&p);
+        assert!((d.sim_radius - 500.0).abs() < 1e-9);
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn describe_start_mentions_mode() {
+        let mut c = DeckConfig::default();
+        assert!(describe_start(&c).starts_with("AUTO"));
+        c.default_mode = "sim".to_string();
+        assert!(describe_start(&c).starts_with("SIM"));
+        c.default_mode = "gpio".to_string();
+        assert!(describe_start(&c).contains("gpio16"));
+    }
 }
