@@ -8,10 +8,15 @@
 #   2. Copies binary/pi3-arm64/{zdeck-run,zdeck-game,zdeck-gps,zdeck-fetch,zdeck-cardkb}
 #      + os/pi3-arm64/{zdeck-auto.sh,zdeck-main.sh} [+ cardkb_keyboard.py]
 #      -> ~/zdeck/  (chmod +x)
-#   3. Sets up auto-start AFTER LOGIN via a ~/.bash_profile hook on /dev/tty1,
-#      so the deck boots -> (you log in, manually or via your own auto-login)
-#      -> zdeck-main.sh -> CardKB keyboard + game. No auto-login is configured
-#      here — set that up yourself if you want it (see notes at the end).
+#   3. Sets up auto-start. On DietPi (detected via /boot/dietpi or an
+#      existing custom.sh) it writes the launch command into DietPi's
+#      custom autostart file (/var/lib/dietpi-autostart/custom.sh on old
+#      images, /var/lib/dietpi/dietpi-autostart/custom.sh on new ones) —
+#      then select "Custom script (foreground, with auto login)" in
+#      `sudo dietpi-autostart`. On other systems it uses a ~/.bash_profile
+#      hook on /dev/tty1 (-> zdeck-main.sh -> CardKB keyboard + game).
+#      No auto-login is configured here — set that up yourself if you want
+#      it (see notes at the end).
 #   4. Ensures enable_uart=1 (GPS on /dev/ttyAMA0) and dtparam=i2c_arm=on
 #      (CardKB on /dev/i2c-1). Does NOT touch bluetooth overlays.
 #
@@ -19,13 +24,15 @@
 #   ./os/pi3-arm64/install-autostart.sh
 #   ./os/pi3-arm64/install-autostart.sh --yes
 #   ./os/pi3-arm64/install-autostart.sh --check-only   # checks, changes nothing
-#   ./os/pi3-arm64/install-autostart.sh --uninstall    # remove login hook only
+#   ./os/pi3-arm64/install-autostart.sh --uninstall    # remove autostart again
+#        (login hook and/or DietPi custom.sh entry)
 #   ./os/pi3-arm64/install-autostart.sh --with-systemd # ALSO install+enable
 #        zdeck.service (opt-in; default is login-hook only so the game
 #        doesn't launch twice).
 #
-# After install, log in on the Pi console (tty1) and the deck starts.
-# SSH sessions are never hooked.
+# After install: DietPi -> pick the Custom foreground mode in
+# `sudo dietpi-autostart` and reboot; other systems -> log in on the Pi
+# console (tty1) and the deck starts. SSH sessions are never hooked.
 
 set -euo pipefail
 
@@ -72,16 +79,50 @@ pi_config() {  # echo first existing Pi config file, or empty
     echo ""
 }
 
+dietpi_custom_path() {  # echo DietPi custom.sh path, or empty if not DietPi
+    # Old images: /var/lib/dietpi-autostart/custom.sh (yours),
+    # new images: /var/lib/dietpi/dietpi-autostart/custom.sh
+    for c in /var/lib/dietpi-autostart/custom.sh \
+             /var/lib/dietpi/dietpi-autostart/custom.sh; do
+        [[ -f "$c" ]] && { echo "$c"; return 0; }
+    done
+    if [[ -d /boot/dietpi ]]; then
+        echo "/var/lib/dietpi/dietpi-autostart/custom.sh"
+        return 0
+    fi
+    echo ""
+}
+
+remove_profile_hook() {  # $1 = profile path
+    local profile="$1"
+    if [[ -f "$profile" ]] && grep -q "zdeck/zdeck-main.sh\|zdeck/zdeck-auto.sh" "$profile"; then
+        cp -n "$profile" "$profile.zdeck-bak" || true
+        grep -v "zdeck/zdeck-main.sh\|zdeck/zdeck-auto.sh\|Z-DECK kiosk" "$profile" > "$profile.tmp" || true
+        mv "$profile.tmp" "$profile"
+        echo "  removed Z-DECK hook from $profile (backup: $profile.zdeck-bak)"
+    fi
+}
+
 # ---------------------------------------------------------------- uninstall
 if [[ "$UNINSTALL" -eq 1 ]]; then
     PROFILE="$HOME/.bash_profile"
     if [[ -f "$PROFILE" ]] && grep -q "zdeck/zdeck-main.sh\|zdeck/zdeck-auto.sh" "$PROFILE"; then
-        cp -n "$PROFILE" "$PROFILE.zdeck-bak" || true
-        grep -v "zdeck/zdeck-main.sh\|zdeck/zdeck-auto.sh\|Z-DECK kiosk" "$PROFILE" > "$PROFILE.tmp" || true
-        mv "$PROFILE.tmp" "$PROFILE"
-        echo "Removed Z-DECK hook from $PROFILE (backup: $PROFILE.zdeck-bak)."
+        remove_profile_hook "$PROFILE"
+        echo "Removed Z-DECK hook from $PROFILE."
     else
-        echo "No Z-DECK hook found in ${PROFILE:-$HOME/.bash_profile}; nothing to do."
+        echo "No Z-DECK hook in ${PROFILE:-$HOME/.bash_profile}."
+    fi
+    DCUSTOM="$(dietpi_custom_path)"
+    if [[ -n "$DCUSTOM" && -f "$DCUSTOM" ]] && grep -q "Z-DECK" "$DCUSTOM"; then
+        if [[ -f "$DCUSTOM.zdeck-bak" ]]; then
+            sudo cp -f "$DCUSTOM.zdeck-bak" "$DCUSTOM"
+            echo "Restored $DCUSTOM from backup."
+        else
+            printf '#!/bin/dash\n# DietPi-AutoStart custom script\n# Location: %s\n\nexit 0\n' "$DCUSTOM" | sudo tee "$DCUSTOM" >/dev/null
+            echo "Reset $DCUSTOM to the DietPi default (exit 0)."
+        fi
+    elif [[ -n "$DCUSTOM" ]]; then
+        echo "No Z-DECK entry in $DCUSTOM."
     fi
     if systemctl is-enabled zdeck.service >/dev/null 2>&1; then
         echo "Disabling zdeck.service ..."
@@ -185,14 +226,30 @@ else
     warn "cardkb.service not active (optional — zdeck-main.sh starts keyboard as fallback)"
 fi
 
-# 6. login-hook state + auto-login note (informational only)
-echo "--- login autostart state ---"
+# 6. autostart state (DietPi custom.sh and/or login hook) + auto-login note
+echo "--- autostart state ---"
+DIETPI_CUSTOM="$(dietpi_custom_path)"
+if [[ -n "$DIETPI_CUSTOM" ]]; then
+    echo "  [INFO] DietPi detected — custom.sh path: $DIETPI_CUSTOM"
+    if [[ -f "$DIETPI_CUSTOM" ]] && grep -q "zdeck/zdeck-main.sh" "$DIETPI_CUSTOM"; then
+        ok "DietPi custom.sh already launches zdeck-main.sh"
+    else
+        warn "DietPi custom.sh has no Z-DECK entry — installer will write it"
+        if [[ -f "$DIETPI_CUSTOM" ]]; then
+            echo "  [INFO] current content: $(head -c 120 "$DIETPI_CUSTOM" | tr '\n' '|')"
+        fi
+    fi
+fi
 PROFILE="$HOME/.bash_profile"
 if [[ -f "$PROFILE" ]] && grep -q "zdeck/zdeck-main.sh" "$PROFILE"; then
-    ok "login hook already in $PROFILE (tty1 -> zdeck-main.sh)"
+    if [[ -n "$DIETPI_CUSTOM" ]]; then
+        warn "login hook in $PROFILE AND DietPi mode — installer keeps ONE (no double launch)"
+    else
+        ok "login hook already in $PROFILE (tty1 -> zdeck-main.sh)"
+    fi
 elif [[ -f "$PROFILE" ]] && grep -q "zdeck/zdeck-auto.sh" "$PROFILE"; then
     warn "legacy hook (zdeck-auto.sh) in $PROFILE — installer upgrades it to zdeck-main.sh"
-else
+elif [[ -z "$DIETPI_CUSTOM" ]]; then
     warn "no login hook yet — installer will add it"
 fi
 echo "  [INFO] This script does NOT configure auto-login. If you want the deck"
@@ -274,28 +331,76 @@ else
     fi
 fi
 
-# ------------------------------------------------- login hook (autostart)
-echo "==> [3/4] Setting up auto-start AFTER LOGIN (tty1 -> zdeck-main.sh)"
-echo "  (No auto-login is configured — the hook only fires once you log in.)"
-HOOK='if [ -z "${SSH_CONNECTION:-}" ] && [ "$(tty 2>/dev/null)" = "/dev/tty1" ]; then exec "$HOME/zdeck/zdeck-main.sh"; fi'
-touch "$PROFILE"
-if grep -q 'zdeck/zdeck-main.sh' "$PROFILE"; then
-    echo "  hook already present in $PROFILE"
+# ------------------------------------------------- autostart method
+if [[ -n "$DIETPI_CUSTOM" ]]; then
+    echo "==> [3/4] DietPi autostart -> $DIETPI_CUSTOM"
+    echo "  DietPi runs this file after auto-login on the main screen (foreground)."
+    METHOD="dietpi"
+    if grep -q "zdeck/zdeck-main.sh" "$PROFILE" 2>/dev/null; then
+        echo "  A ~/.bash_profile hook also exists — pick ONE method (both = game launches twice)."
+        if [[ "$YES" -eq 1 ]] || ask_yes "  Use DietPi custom.sh and remove the profile hook?"; then
+            METHOD="dietpi"
+        else
+            METHOD="hook"
+        fi
+    elif [[ "$YES" -eq 0 ]]; then
+        echo "  Methods:"
+        echo "    1) DietPi custom.sh (recommended on DietPi)"
+        echo "    2) ~/.bash_profile hook instead"
+        read -r -p "  Pick [1/2] " pick || true
+        [[ "${pick:-1}" == "2" ]] && METHOD="hook" || METHOD="dietpi"
+    fi
 else
-    # upgrade legacy hook if present
-    if grep -q 'zdeck/zdeck-auto.sh' "$PROFILE"; then
-        cp -n "$PROFILE" "$PROFILE.zdeck-bak" || true
-        grep -v 'zdeck/zdeck-auto.sh' "$PROFILE" > "$PROFILE.tmp" || true
-        mv "$PROFILE.tmp" "$PROFILE"
-        echo "  removed legacy zdeck-auto.sh hook (backup: $PROFILE.zdeck-bak)"
+    METHOD="hook"
+fi
+
+if [[ "$METHOD" == "dietpi" ]]; then
+    echo "  Writing Z-DECK launch into $DIETPI_CUSTOM ..."
+    sudo mkdir -p "$(dirname "$DIETPI_CUSTOM")"
+    if [[ -f "$DIETPI_CUSTOM" ]] && ! grep -q "Z-DECK" "$DIETPI_CUSTOM"; then
+        sudo cp -n "$DIETPI_CUSTOM" "$DIETPI_CUSTOM.zdeck-bak" || true
+        echo "  (your old custom.sh backed up to $DIETPI_CUSTOM.zdeck-bak)"
     fi
     {
-        echo ""
-        echo "# Z-DECK kiosk: start the deck after login on the local console."
-        echo "# (Auto-login is NOT managed here — enable it via raspi-config if wanted.)"
-        echo "$HOOK"
-    } >> "$PROFILE"
-    echo "  hook added to $PROFILE"
+        echo "#!/bin/dash"
+        echo "# Z-DECK kiosk (managed by install-autostart.sh, $(date -u +%F))."
+        echo "# Needs DietPi-AutoStart mode: Custom script (foreground, with auto login)."
+        echo "# Runs after auto-login on the main screen. exec: when the deck exits,"
+        echo "# the session ends and DietPi logs straight back in (crash = relaunch)."
+        echo "exec \"$DEST/zdeck-main.sh\""
+    } | sudo tee "$DIETPI_CUSTOM" >/dev/null
+    sudo chmod +x "$DIETPI_CUSTOM"
+    echo "  wrote $DIETPI_CUSTOM:"
+    cat "$DIETPI_CUSTOM" | sed 's/^/    /'
+    # The profile hook would double-launch alongside custom.sh — drop it.
+    remove_profile_hook "$PROFILE"
+    echo
+    echo "  NEXT (required): sudo dietpi-autostart  ->  Autostart Options"
+    echo "     ->  'Custom script (foreground, with auto login)'  -> reboot."
+    echo "  (No auto-login option is changed here — that DietPi mode brings its own.)"
+else
+    echo "==> [3/4] Setting up auto-start AFTER LOGIN (tty1 -> zdeck-main.sh)"
+    echo "  (No auto-login is configured — the hook only fires once you log in.)"
+    HOOK='if [ -z "${SSH_CONNECTION:-}" ] && [ "$(tty 2>/dev/null)" = "/dev/tty1" ]; then exec "$HOME/zdeck/zdeck-main.sh"; fi'
+    touch "$PROFILE"
+    if grep -q 'zdeck/zdeck-main.sh' "$PROFILE"; then
+        echo "  hook already present in $PROFILE"
+    else
+        # upgrade legacy hook if present
+        if grep -q 'zdeck/zdeck-auto.sh' "$PROFILE"; then
+            cp -n "$PROFILE" "$PROFILE.zdeck-bak" || true
+            grep -v 'zdeck/zdeck-auto.sh' "$PROFILE" > "$PROFILE.tmp" || true
+            mv "$PROFILE.tmp" "$PROFILE"
+            echo "  removed legacy zdeck-auto.sh hook (backup: $PROFILE.zdeck-bak)"
+        fi
+        {
+            echo ""
+            echo "# Z-DECK kiosk: start the deck after login on the local console."
+            echo "# (Auto-login is NOT managed here — enable it via raspi-config if wanted.)"
+            echo "$HOOK"
+        } >> "$PROFILE"
+        echo "  hook added to $PROFILE"
+    fi
 fi
 
 # ------------------------------------------------- optional systemd unit
@@ -326,9 +431,14 @@ fi
 
 echo
 echo "Done. Next steps:"
-echo "  1. Log in on the Pi console (tty1) — the deck starts automatically."
-echo "     (For boot-to-game with no password prompt, enable auto-login manually:"
-echo "      sudo raspi-config -> System Options -> Boot / Auto Login -> Console Autologin)"
+if [[ "${METHOD:-hook}" == "dietpi" ]]; then
+    echo "  1. sudo dietpi-autostart -> 'Custom script (foreground, with auto login)'."
+    echo "  2. sudo reboot — the deck starts on the main screen after auto-login."
+else
+    echo "  1. Log in on the Pi console (tty1) — the deck starts automatically."
+    echo "     (For boot-to-game with no password prompt, enable auto-login manually:"
+    echo "      DietPi: sudo dietpi-autostart | Pi OS: raspi-config -> Boot / Auto Login)"
+fi
 echo "  2. Test now without reboot:  ~/zdeck/zdeck-main.sh --sim"
 echo "  3. Checks:  ~/zdeck/zdeck-main.sh --check-only   |   $SRC_OS/install-autostart.sh --check-only"
 echo "  4. Reboot only if UART/I2C config changed:  sudo reboot"

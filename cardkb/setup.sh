@@ -181,6 +181,19 @@ if ! id "$TARGET_USER" 2>/dev/null | grep -q "(input)"; then
 else
   msg "$TARGET_USER already in 'input' group."
 fi
+# /dev/i2c-* is root:i2c on Pi OS/DietPi — without this group the driver
+# gets "Permission denied" and the service crash-loops (no keypresses).
+if ! id "$TARGET_USER" 2>/dev/null | grep -q "(i2c)"; then
+  if getent group i2c >/dev/null 2>&1; then
+    usermod -aG i2c "$TARGET_USER"
+    msg "Added $TARGET_USER to 'i2c' group (re-login/reboot to take effect)."
+    NEEDS_REBOOT=1
+  else
+    warn "No 'i2c' group on this system — skipping (driver may lack /dev/i2c-1 access)."
+  fi
+else
+  msg "$TARGET_USER already in 'i2c' group."
+fi
 udevadm control --reload-rules && udevadm trigger --subsystem-match=misc --attr-match=name=uinput || true
 
 # ------------------------------------------------- 5. Install keyboard script
@@ -194,7 +207,9 @@ msg "Then type in a text editor, and verify with:"
 msg "  cat /proc/bus/input/devices | grep -A5 CardKB"
 
 # ------------------------------------------------- 6. systemd service (autostart)
-# Prefer the Rust driver (no Python); fall back to cardkb_keyboard.py.
+# Prefer the Rust driver (no Python); fall back to cardkb_keyboard.py
+# ONLY if its imports actually work — otherwise the service would just
+# crash-loop and you'd get silence (no keypresses) with no obvious error.
 RUST_BIN="$TARGET_HOME/zdeck/zdeck-cardkb"
 if [ -x "$RUST_BIN" ]; then
   EXEC_LINE="ExecStart=$RUST_BIN"
@@ -202,10 +217,16 @@ if [ -x "$RUST_BIN" ]; then
 elif RUST_BIN_SYS="$(command -v zdeck-cardkb 2>/dev/null)" && [ -n "$RUST_BIN_SYS" ]; then
   EXEC_LINE="ExecStart=$RUST_BIN_SYS"
   msg "Step 7/7: creating $SERVICE_DST (Rust driver: $RUST_BIN_SYS) ..."
+elif python3 -c "import smbus2, evdev" 2>/dev/null; then
+  EXEC_LINE="ExecStart=/usr/bin/python3 $KEYBOARD_DST"
+  msg "Step 7/7: creating $SERVICE_DST (Python fallback, imports OK) ..."
 else
   EXEC_LINE="ExecStart=/usr/bin/python3 $KEYBOARD_DST"
-  msg "Step 7/7: creating $SERVICE_DST (Python fallback) ..."
-  msg "Tip: build/install the Rust driver instead: ./rust/build-pi.sh arm64, then re-run install-autostart.sh"
+  warn "Step 7/7: NO working driver! Rust binary missing AND python smbus2/evdev broken."
+  warn "The service is installed but WILL crash-loop until you fix one of:"
+  warn "  a) cp binary/pi3-arm64/zdeck-cardkb $TARGET_HOME/zdeck/ && sudo $0"
+  warn "     (Rust, recommended — then re-run this setup so the service uses it)"
+  warn "  b) fix Python: uv pip install --system --break-system-packages smbus2 evdev"
 fi
 cat > "$SERVICE_DST" <<EOF
 [Unit]
@@ -225,12 +246,22 @@ EOF
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME" || warn "Service failed to start (may need reboot for i2c/uinput). Check: sudo journalctl -u $SERVICE_NAME -e"
+sleep 2
+if systemctl is-active --quiet "$SERVICE_NAME" && grep -q "CardKB" /proc/bus/input/devices 2>/dev/null; then
+  msg "Self-check PASSED: service active + CardKB registered. Type in any editor to test."
+else
+  warn "Self-check: service state / CardKB device not confirmed yet."
+  warn "After any reboot, run the diagnostic:  sudo bash $SCRIPT_DIR/diag.sh"
+  warn "It pinpoints the failing layer (wiring, perms, driver, service)."
+fi
 systemctl --no-pager --full status "$SERVICE_NAME" || true
 
 echo
 msg "Done. Useful commands:"
+echo "  sudo bash $SCRIPT_DIR/diag.sh                   # full diagnostic (use this first if keys don't show)"
 echo "  sudo i2cdetect -y 1                              # expect 5F"
-echo "  python3 $KEYBOARD_DST                            # manual run"
+echo "  $RUST_BIN                                    # manual Rust run (foreground, Ctrl+C)"
+echo "  python3 $KEYBOARD_DST                            # manual Python run (fallback)"
 echo "  cat /proc/bus/input/devices | grep -A5 CardKB    # verify virtual keyboard"
 echo "  sudo systemctl status $SERVICE_NAME"
 echo "  sudo journalctl -u $SERVICE_NAME -f"

@@ -51,18 +51,54 @@ sudo ./setup.sh --yes --no-reboot
    (falls back to `/boot/config.txt`), adds `i2c-dev` + `i2c-bcm2835`
    to `/etc/modules`, `modprobe`s them now.
 2. `apt install i2c-tools`, then `i2cdetect -y 1` — look for `5F`.
-3. Installs `smbus2` (I2C talk) + `evdev` (virtual keyboard) with
-   `uv` instead of pip: `uv pip install --system smbus2 evdev`.
+3. Tries Python `smbus2`+`evdev` (legacy fallback only, best-effort —
+   never aborts setup on PEP 668 errors).
 4. `modprobe uinput`, persists `uinput` in `/etc/modules`, writes
    `/etc/udev/rules.d/99-uinput.rules`:
    `KERNEL=="uinput", MODE="0660", GROUP="input"`,
-   runs `usermod -aG input $USER` + `udevadm control --reload-rules`.
-5. Copies `cardkb_keyboard.py` to `~/cardkb_keyboard.py`, syntax-checks it.
+   adds you to `input` **and `i2c`** groups + `udevadm control --reload-rules`.
+5. Copies `cardkb_keyboard.py` to `~/cardkb_keyboard.py` (fallback).
 6. Installs `/etc/systemd/system/cardkb.service`
    (`After=multi-user.target`, `Restart=always`,
-   `ExecStart=/usr/bin/python3 /home/<user>/cardkb_keyboard.py`),
-   then `systemctl enable + restart`.
+   `ExecStart=/home/<user>/zdeck/zdeck-cardkb`, Python fallback only if
+   its imports actually work — otherwise it warns instead of installing
+   a service that would crash-loop silently), then `enable + restart`
+   plus a self-check.
 7. Reboots if I2C/uinput/group changed (`sudo reboot`).
+
+## No keypresses? Diagnose first
+
+```bash
+sudo bash cardkb/diag.sh          # full report + MOST LIKELY cause
+sudo bash cardkb/diag.sh --live   # + 10 s live keypress test (press keys!)
+```
+
+Usual culprits, in order:
+
+| Symptom in diag | Fix |
+|---|---|
+| `0x5F NOT on bus 1` | wiring/power (VCC→3.3V, GND→GND, SDA→GPIO2, SCL→GPIO3) |
+| `CANNOT access /dev/i2c-1` | `sudo usermod -aG i2c $USER && sudo reboot` |
+| service crash-loop, `Permission denied` in journal | groups (`input`+`i2c`) + reboot; `sudo journalctl -u cardkb -n 30` |
+| `ExecStart` points at missing file | `cp binary/pi3-arm64/zdeck-cardkb ~/zdeck/ && sudo ./cardkb/setup.sh` |
+| device registered, apps ignore keys | focus a console editor (not SSH): `cat /proc/bus/input/devices \| grep -A5 CardKB` |
+
+## DietPi autostart (custom.sh)
+
+`install-autostart.sh` detects DietPi and writes the launch command into
+`/var/lib/dietpi-autostart/custom.sh` (old images) or
+`/var/lib/dietpi/dietpi-autostart/custom.sh` (new images):
+
+```sh
+#!/bin/dash
+# Z-DECK kiosk ...
+exec "/home/dietpi/zdeck/zdeck-main.sh"
+```
+
+Then: `sudo dietpi-autostart` → **Custom script (foreground, with auto
+login)** → reboot. Manual equivalent: edit that file, paste the `exec`
+line, keep it executable. Remove again with
+`install-autostart.sh --uninstall` (restores your backup).
 
 ## Wiring
 
