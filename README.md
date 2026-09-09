@@ -15,13 +15,20 @@
 
 
 ### Project Description
-A hardware-based zombie chase game that runs on a handheld Raspberry Pi terminal. Run for your life as zombies chase you!!
+A hardware-based zombie chase simulation that runs on a handheld Raspberry Pi terminal. The system transforms the user’s immediate surroundings into a live survival environment, where the objective is deceptively simple: keep moving, or get eaten.
 
 ### The Problem (that doesn't exist)
-Zombie apocalypses are real. Ofcourse EVERYBODY need to outrun the undead through their own neighborhood on a Tuesday evening. Humanity remains criminally under-equipped to know exactly how close a horde of zombies currently is, in meters, while jogging past the local chaya kada.
+Zombie apocalypses are real. Ofcourse EVERYBODY need to outrun the undead through their own neighborhood on a Tuesday evening. Modern society has invested heavily in navigation, fitness tracking, and emergency communication, yet somehow overlooked one critical metric: How close is the nearest zombie?
+
+During an unexpected zombie outbreak, civilians would have no reliable method to quantify undead pursuit distance while navigating their local surroundings. This is particularly concerning when one is attempting to jog past the local chaya kada on an otherwise completely normal Tuesday evening.
+
 
 ### The Solution (that nobody asked for)
-We made a hand-held Cyber Deck using Raspberry Pi, and since your street is a live zombie-infested map, and you are the controller. No joystick, no WASD, you outrun the zombies by, well, outrunning them.
+We developed a handheld Raspberry Pi-powered cyberdeck that turns the real world into a live zombie survival simulation.
+
+The player becomes the controller, while the surrounding environment becomes the map. There are no joysticks, no WASD controls, and absolutely no convenient pause button.. you outrun the zombies by, well, outrunning them.
+
+The system continuously tracks the player’s movement and simulates an approaching zombie threat, effectively converting a casual evening jog into a low-budget, unnecessarily sophisticated survival experiment.
 
 ### How to run the cyberdeck
 
@@ -100,14 +107,14 @@ For Hardware:
 ![Build]]<img width="500" height="300" src="./assets/images/op1.jpeg">
 ![Build]<img width="500" height="800" src="./assets/images/op2.jpeg">
 ![Build]<img width="500" height="400" src="./assets/images/op3.jpeg">
+![Build]<img width="500" height="400" src="./assets/images/op4.jpeg">
 
-
-![Final]<img width="500" height="700" src="./assets/images/op4.jpeg">
+![Final]<img width="500" height="700" src="./assets/images/zdeck.jpeg">
 
 
 ### Project Demo
 # Video
-[[Add your demo video link here](https://drive.google.com/file/d/1eoE_j6qld39hfe-Od8CWFa1EvSzYB2Pg/view?usp=drivesdk)]
+[[Add your demo video link here](https://drive.google.com/file/d/12bjlr13PvpbS4DbJXnQ3hlKXM0N1LKDT/view?usp=sharing)]
 
 
 
