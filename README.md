@@ -78,7 +78,7 @@ You become the controller, while your street becomes the map. No joystick, no WA
 ### Hardware
 
 - Raspberry Pi 3 (Model B/B+) — Debian, headless console mode
-- 3.5" TFT display — game screen over SPI (GPIO header) or HDMI depending on model
+- 3.5" TFT display — game screen over SPI (GPIO header)
 - NEO-6M GPS module — NMEA 0183 over UART, 9600 baud default, 3.3–5V tolerant, ceramic patch antenna
 - M5Stack CardKB (I2C `0x5F`) — mini keyboard exposed as a virtual keyboard via `uinput` (Rust `zdeck-cardkb` driver)
 - Portable 5V/2A+ USB power bank, MicroSD 8GB+, female-to-female jumpers
