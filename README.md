@@ -1,6 +1,6 @@
 <img width="1280" height="640" alt="Zombie Deck banner" src="https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd" />
 
-# Zombie Deck 🧟
+# Zombie Deck 
 
 A hardware-based zombie chase game on a handheld Raspberry Pi terminal. Your street is a live zombie-infested map — and **you** are the controller. No joystick, no WASD (unless you're indoors testing). You outrun zombies by *actually outrunning them*.
 
