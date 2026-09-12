@@ -3,7 +3,7 @@
 Map prep tool - run this ONCE, wherever you have internet (home wifi, phone
 hotspot, laptop). It downloads road/path geometry around a center coordinate
 from OpenStreetMap (via the Overpass API) and saves a small local file that
-zombie_cyberdeck.py reads completely offline in the field.
+cyberdeck.py reads completely offline in the field.
 
 Uses only the Python standard library - nothing to install.
 
@@ -205,7 +205,7 @@ def main():
 
     print(f"Saved {len(roads)} roads ({len(ways)} legacy ways), "
           f"{len(areas)} areas and {len(pois)} named places to {args.out}")
-    print("Copy this file next to zombie_cyberdeck.py on the Pi -- "
+    print("Copy this file next to cyberdeck.py on the Pi -- "
           "the game will load it automatically and needs no internet from here on.")
 
 

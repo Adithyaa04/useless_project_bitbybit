@@ -33,10 +33,8 @@ You become the controller, while your street becomes the map. No joystick, no WA
 .
 ├── run.py                 # master entry point: checks, setup, launch (recommended)
 ├── app/
-│   ├── cyberdeck.py       # Python game (curses) — canonical
-│   ├── zombie_cyberdeck.py# legacy duplicate of cyberdeck.py
-│   ├── fetch_map.py       # map fetcher (stdlib only) — canonical
-│   ├── fetch_map1.py      # legacy duplicate of fetch_map.py
+│   ├── cyberdeck.py       # Python game (curses)
+│   ├── fetch_map.py       # map fetcher (stdlib only)
 │   ├── run.py             # Python-only launcher (install deps, fetch map, launch)
 │   └── map_data.json      # pre-fetched OSM map (generated)
 ├── rust/                  # Rust port (ratatui/crossterm): zdeck-game/gps/fetch/run/cardkb
@@ -50,8 +48,6 @@ You become the controller, while your street becomes the map. No joystick, no WA
 ├── assets/images/         # screenshots, schematics, build photos
 └── index.html
 ```
-
-> Note: `app/zombie_cyberdeck.py` and `app/fetch_map1.py` are byte-identical legacy copies kept for backwards compatibility. Use `app/cyberdeck.py` and `app/fetch_map.py`.
 
 ---
 

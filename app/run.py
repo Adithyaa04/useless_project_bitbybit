@@ -31,13 +31,8 @@ else:
     # fallback if app/ doesn't exist (single-folder layout)
     if not APP_DIR.exists():
         APP_DIR = ROOT
-# clean names (new) + legacy fallback
 FETCH_MAP = APP_DIR / "fetch_map.py"
-if not FETCH_MAP.exists():
-    FETCH_MAP = APP_DIR / "fetch_map1.py"
 CYBERDECK = APP_DIR / "cyberdeck.py"
-if not CYBERDECK.exists():
-    CYBERDECK = APP_DIR / "zombie_cyberdeck.py"
 MAP_FILE = APP_DIR / "map_data.json"
 
 BOLD = "\033[1m"

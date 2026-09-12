@@ -5,11 +5,11 @@ Designed for Raspberry Pi 3 running Debian in console mode on a 3.5" TFT.
 
 Run for real, with a NMEA GPS module bit-banged on GPIO16 (used when the
 hardware UART pins 8/10 are already taken, e.g. by a TFT display):
-    python3 zombie_cyberdeck.py --gpio 16 --baud 9600
+    python3 cyberdeck.py --gpio 16 --baud 9600
     (requires pigpiod running: sudo systemctl start pigpiod)
 
 Run indoors for testing, with WASD-simulated GPS:
-    python3 zombie_cyberdeck.py --sim
+    python3 cyberdeck.py --sim
 
 Dependencies (only needed for real GPS mode):
     pip install pynmea2 pigpio

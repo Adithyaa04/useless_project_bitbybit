@@ -1,5 +1,5 @@
-//! Tunables. Same values / semantics as the Python originals
-//! (`app/cyberdeck.py`, `app/zombie_cyberdeck.py`).
+//! Tunables. Same values / semantics as the Python original
+//! (`app/cyberdeck.py`).
 
 /// Meters represented by one terminal character cell.
 pub const SCALE_M_PER_CELL: f64 = 3.0;
