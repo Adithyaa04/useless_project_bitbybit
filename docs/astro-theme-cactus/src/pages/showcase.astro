@@ -1,0 +1,99 @@
+---
+import Timeline from "@/components/showcase/Timeline.astro";
+import { timelineEntries } from "@/data/timeline";
+import PageLayout from "@/layouts/Base.astro";
+import { withBase } from "@/utils/base";
+
+const meta = {
+	description: "Zombie Deck project showcase — follow the build timeline: idea, prototype, maps, GPS, Rust port, deck assembly, demo.",
+	title: "Showcase",
+};
+---
+
+<PageLayout meta={meta}>
+	{/* Hero — same cactus typography (title / prose-cactus / cactus-link) */}
+	<section>
+		<p class="text-xs font-semibold tracking-widest text-accent uppercase">Bit By Bit · TinkerHub Useless Projects</p>
+		<h1 class="title mt-2 mb-4 text-3xl!">Zombie Deck</h1>
+		<div class="prose prose-sm prose-cactus max-w-none">
+			<p>
+				A hardware-based zombie chase game on a handheld Raspberry Pi terminal. Your street is a
+				live zombie-infested map — and <strong>you</strong> are the controller. No joystick, no WASD
+				(unless you're indoors testing). You outrun zombies by <em>actually outrunning them</em>.
+			</p>
+			<p>
+				This page documents the making of the project as a timeline — each milestone has text,
+				images, and video. All media below are <strong>placeholders</strong>: swap them with real
+				build photos, screenshots, and clips when ready. See
+				<code>src/data/timeline.ts</code> for where to edit.
+			</p>
+		</div>
+
+		{/* Quick stats — theme-bordered cards, no new palette */}
+		<dl class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+			<div class="rounded-lg border border-muted/20 p-3">
+				<dt class="text-xs text-muted">Platform</dt>
+				<dd class="mt-1 text-sm font-semibold text-accent-2">Pi 3 + 3.5" TFT</dd>
+			</div>
+			<div class="rounded-lg border border-muted/20 p-3">
+				<dt class="text-xs text-muted">Input</dt>
+				<dd class="mt-1 text-sm font-semibold text-accent-2">GPS body + CardKB</dd>
+			</div>
+			<div class="rounded-lg border border-muted/20 p-3">
+				<dt class="text-xs text-muted">Maps</dt>
+				<dd class="mt-1 text-sm font-semibold text-accent-2">OSM offline</dd>
+			</div>
+			<div class="rounded-lg border border-muted/20 p-3">
+				<dt class="text-xs text-muted">Stack</dt>
+				<dd class="mt-1 text-sm font-semibold text-accent-2">Python + Rust</dd>
+			</div>
+		</dl>
+
+		{/* Anchor nav — jumps to each timeline point */}
+		<nav aria-label="Build timeline sections" class="mt-6">
+			<p class="mb-2 text-xs font-semibold tracking-widest text-muted uppercase">Jump to</p>
+			<ul class="flex flex-wrap gap-2" role="list">
+				{timelineEntries.map((e) => (
+					<li>
+						<a
+							href={`#${e.id}`}
+							class="inline-block rounded-full border border-accent/30 px-3 py-1 text-xs font-semibold text-accent hover:bg-accent/10"
+						>
+							{e.displayDate}
+						</a>
+					</li>
+				))}
+			</ul>
+		</nav>
+	</section>
+
+	{/* Timeline */}
+	<section class="mt-12" aria-label="Project build timeline">
+		<h2 class="title mb-8 text-xl">Build timeline</h2>
+		<Timeline entries={timelineEntries} />
+	</section>
+
+	{/* How to replace placeholders — keeps cactus admonition/prose look */}
+	<section class="mt-12">
+		<h2 class="title mb-4 text-xl">Replace placeholders</h2>
+		<div class="prose prose-sm prose-cactus max-w-none">
+			<ol class="list-inside list-decimal" role="list">
+				<li>Edit <code>src/data/timeline.ts</code> — text, dates, bullets, tags per entry.</li>
+				<li>
+					Add real media to <code>public/showcase/</code> (e.g.
+					<code>demo.mp4</code>, <code>build-01.jpg</code>), then set
+					<code>images[].src: "/showcase/build-01.jpg"</code> and
+					<code>video.src: "/showcase/demo.mp4"</code>.
+				</li>
+				<li>
+					For repo assets, copy from <code>../../assets/images/</code> into
+					<code>public/showcase/</code> so Astro serves them.
+				</li>
+				<li>Keep the theme: this page only uses <code>title</code>, <code>prose-cactus</code>, <code>cactus-link</code>, and accent/muted tokens.</li>
+			</ol>
+			<p>
+				<a class="cactus-link inline-block" href={withBase("/")}>← Back home</a>
+			</p>
+		</div>
+	</section>
+</PageLayout>

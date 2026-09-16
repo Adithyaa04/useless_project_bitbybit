@@ -1,0 +1,107 @@
+---
+import type { TimelineEntry } from "@/data/timeline";
+
+interface Props {
+	entries: TimelineEntry[];
+}
+
+const { entries } = Astro.props;
+
+const statusLabel: Record<string, string> = {
+	idea: "Idea",
+	prototype: "Prototype",
+	building: "Building",
+	testing: "Testing",
+	done: "Done",
+};
+---
+
+<ol class="relative ml-2 border-s border-dashed border-muted/40 pl-0 sm:ml-4" role="list">
+	{entries.map((entry) => (
+		<li class="relative pb-12 pl-8 last:pb-0 sm:pl-10" id={entry.id}>
+			{/* Timeline dot — uses cactus accent, keeps theme */}
+			<span
+				aria-hidden="true"
+				class="absolute top-1 -left-[7px] h-3.5 w-3.5 rounded-full border-2 border-accent bg-global-bg ring-4 ring-accent/15"
+			/>
+			<article class="group">
+				<p class="text-xs font-semibold tracking-widest text-accent uppercase">{entry.displayDate}</p>
+				<h3 class="title mt-1 text-lg! sm:text-xl!">{entry.title}</h3>
+				{entry.subtitle && <p class="mt-1 text-sm text-muted">{entry.subtitle}</p>}
+
+				{entry.status && (
+					<p class="mt-2">
+						<span class="inline-block rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-xs font-semibold text-accent">
+							{statusLabel[entry.status] ?? entry.status}
+						</span>
+					</p>
+				)}
+
+				<div class="prose prose-sm prose-cactus mt-3 max-w-none">
+					<p>{entry.description}</p>
+					{entry.bullets && entry.bullets.length > 0 && (
+						<ul class="list-inside list-disc" role="list">
+							{entry.bullets.map((b) => (
+								<li>{b}</li>
+							))}
+						</ul>
+					)}
+				</div>
+
+				{/* Images — text + image support */}
+				{entry.images && entry.images.length > 0 && (
+					<div class:list={["mt-4 grid gap-4", entry.images.length > 1 ? "sm:grid-cols-2" : "sm:grid-cols-1"]}>
+						{entry.images.map((img) => (
+							<figure class="overflow-hidden rounded-lg border border-muted/20 bg-global-bg">
+								<img
+									alt={img.alt}
+									class="aspect-video w-full object-cover transition-transform duration-300 group-hover:scale-[1.01]"
+									loading="lazy"
+									src={img.src}
+								/>
+								{img.caption && (
+									<figcaption class="px-3 py-2 text-xs text-muted">{img.caption}</figcaption>
+								)}
+							</figure>
+						))}
+					</div>
+				)}
+
+				{/* Video — HTML5 player, theme-matched frame */}
+				{entry.video && (
+					<figure class="mt-4 overflow-hidden rounded-lg border border-muted/20 bg-global-bg">
+						<video class="aspect-video w-full bg-black" controls preload="metadata" poster={entry.video.poster}>
+							<source src={entry.video.src} type="video/mp4" />
+							Your browser does not support the video tag.
+						</video>
+						{entry.video.caption && (
+							<figcaption class="px-3 py-2 text-xs text-muted">{entry.video.caption}</figcaption>
+						)}
+					</figure>
+				)}
+
+				{/* Tags + links — cactus-link style */}
+				{(entry.tags?.length || entry.links?.length) && (
+					<div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+						{entry.tags && entry.tags.length > 0 && (
+							<ul class="flex flex-wrap gap-1.5" role="list" aria-label="Tags">
+								{entry.tags.map((t) => (
+									<li class="rounded border border-muted/30 px-1.5 py-0.5 text-muted">#{t}</li>
+								))}
+							</ul>
+						)}
+						{entry.links && entry.links.length > 0 && (
+							<span class="flex flex-wrap gap-3">
+								{entry.links.map((l) => (
+									<a class="cactus-link inline-block text-accent" href={l.href} rel="noreferrer" target="_blank">
+										{l.label} ↗
+									</a>
+								))}
+							</span>
+						)}
+					</div>
+				)}
+			</article>
+		</li>
+	))}
+</ol>

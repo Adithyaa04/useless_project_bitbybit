@@ -1,0 +1,59 @@
+---
+/**
+ * Hero3D — real 3D scan of the Zombie Deck via <model-viewer>.
+ *
+ * Model file: `public/showcase/modelv1.glb` (served as `/showcase/modelv1.glb`).
+ * To swap models, drop a new `.glb` in `public/showcase/` and update `src` below.
+ */
+import { withBase } from "@/utils/base";
+
+const modelSrc = withBase("/showcase/modelv1.glb");
+---
+
+<div class="hero3d-wrap">
+	<model-viewer
+		alt="3D scan of the Zombie Deck handheld terminal"
+		auto-rotate
+		auto-rotate-delay="1200"
+		camera-controls
+		camera-orbit="0deg 72deg 105%"
+		disable-zoom={false}
+		exposure="1"
+		interaction-prompt="none"
+		loading="eager"
+		max-camera-orbit="auto auto 220%"
+		min-camera-orbit="auto auto 55%"
+		rotation-per-second="30deg"
+		shadow-intensity="0"
+		src={modelSrc}
+	>
+	</model-viewer>
+	<p class="hero-caption">Drag to rotate · scroll to zoom</p>
+</div>
+
+<script
+	is:inline
+	type="module"
+	src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"
+></script>
+
+<style>
+	.hero3d-wrap {
+		/* No card/frame — the model lives directly on the page background */
+		container-type: inline-size;
+	}
+	.hero3d-wrap model-viewer {
+		width: 100%;
+		height: min(60vh, 560px);
+		min-height: 440px;
+		background-color: transparent;
+		--poster-color: transparent;
+	}
+	.hero-caption {
+		margin-top: 0.25rem;
+		padding-inline: 1rem;
+		text-align: center;
+		font-size: 0.75rem;
+		color: var(--color-muted);
+	}
+</style>
