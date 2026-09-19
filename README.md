@@ -2,7 +2,7 @@
 
 # Zombie Deck 
 
-A hardware-based zombie chase game on a handheld Raspberry Pi terminal. Your street is a live zombie-infested map — and **you** are the controller. No joystick, no WASD (unless you're indoors testing). You outrun zombies by *actually outrunning them*.
+A hardware-based zombie chase game on a handheld Raspberry Pi terminal . Your street is a live zombie-infested map — and **you** are the controller. No joystick, no WASD (unless you're indoors testing). You outrun zombies by *actually outrunning them*.
 
 ## Basic Details
 
