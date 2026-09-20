@@ -71,7 +71,7 @@ const statusLabel: Record<string, string> = {
 				{entry.video && (
 					<figure class="mt-4 overflow-hidden rounded-lg border border-muted/20 bg-global-bg">
 						<video class="aspect-video w-full bg-black" controls preload="metadata" poster={entry.video.poster}>
-							<source src={entry.video.src} type="video/mp4" />
+							<source src={entry.video.src} type={entry.video.src.endsWith(".mov") ? "video/quicktime" : "video/mp4"} />
 							Your browser does not support the video tag.
 						</video>
 						{entry.video.caption && (

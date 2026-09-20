@@ -70,10 +70,6 @@ const socialImageURL = new URL(ogImage ? ogImage : "/social-card.png", Astro.url
 {/* Sitemap */}
 <link href={withBase("/sitemap-index.xml")} rel="sitemap" />
 
-{/* RSS auto-discovery */}
-<link href={withBase("/rss.xml")} title="Blog" rel="alternate" type="application/rss+xml" />
-<link href={withBase("/notes/rss.xml")} title="Notes" rel="alternate" type="application/rss+xml" />
-
 {/* Webmentions */}
 {
 	WEBMENTION_URL && (

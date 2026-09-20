@@ -1,8 +1,9 @@
 ---
 import PageLayout from "@/layouts/Base.astro";
+import { withBase } from "@/utils/base";
 
 const meta = {
-	description: "I'm a starter theme for Astro.build",
+	description: "About Zombie Deck — a handheld Raspberry Pi zombie chase game by Bit By Bit.",
 	title: "About",
 };
 ---
@@ -11,26 +12,30 @@ const meta = {
 	<h1 class="title mb-12">About</h1>
 	<div class="prose prose-sm prose-cactus max-w-none">
 		<p>
-			Hi, I’m a starter Astro. I’m particularly great for getting you started with your own blogging
-			website.
+			<strong>Zombie Deck</strong> is a hardware-based zombie chase game on a handheld Raspberry
+			Pi terminal, built by <strong>Bit By Bit</strong> (Abhijith R & Adithya Vijay, NSS College
+			Of Engineering Palakkad) for TinkerHub Useless Projects 3.0.
 		</p>
-		<p>Here are my some of my awesome built in features:</p>
+		<p>
+			Your street is a live zombie-infested map — and <strong>you</strong> are the controller. The
+			deck renders your neighbourhood (roads + POIs from OpenStreetMap) as ASCII on a 3.5" TFT,
+			spawns zombies around you using live GPS, and they chase you. You outrun zombies by
+			<em>actually outrunning them</em>.
+		</p>
+		<p>Under the hood:</p>
 		<ul class="list-inside list-disc" role="list">
-			<li>I'm ultra fast as I'm a static site</li>
-			<li>I'm fully responsive</li>
-			<li>I come with a light and dark mode</li>
-			<li>I'm easy to customise and add additional content</li>
-			<li>I have Tailwind CSS styling</li>
-			<li>Shiki code syntax highlighting</li>
-			<li>Satori for auto generating OG images for blog posts</li>
+			<li>Raspberry Pi 3 + 3.5" TFT display + NEO-6M GPS + M5Stack CardKB</li>
+			<li>Python (<code>curses</code>) game plus a Rust (<code>ratatui</code>) port</li>
+			<li>Offline OpenStreetMap data via the Overpass API</li>
 		</ul>
 		<p>
-			Clone or fork my <a
+			Follow the build <a class="cactus-link inline-block" href={withBase("/showcase/")}>timeline</a> or check
+			out the <a
 				class="cactus-link inline-block"
-				href="https://github.com/chrismwilliams/astro-cactus"
+				href="https://github.com/Adithyaa04/useless_project_bitbybit"
 				rel="noreferrer"
-				target="_blank">repo</a
-			> if you like me!
+				target="_blank">source repo</a
+			>.
 		</p>
 	</div>
 </PageLayout>

@@ -4,16 +4,13 @@
  * Each entry is one point in the vertical showcase timeline.
  * Supports text, images, and videos per entry.
  *
- * TODO (replace placeholders with real build content):
- * - Update `date`, `title`, `description` with real milestones
- * - Replace `images[].src` with e.g. `/showcase/<your-photo>.jpg` (put files in `public/showcase/`)
- *   or with repo assets like `../../../assets/images/...`
- * - Replace `video.src` with e.g. `/showcase/<your-clip>.mp4` (put files in `public/showcase/`)
- * - Optional: `links: [{ label, href }]`, `tags: [...]`, `status`
+ * Media lives in `public/media1/` (served as `/media1/...`).
+ * To swap an image/video, drop the file in `public/media1/`
+ * and update `images[].src` / `video.src` below.
  */
 
 export interface TimelineMediaImage {
-	/** Image URL — local (`/showcase/foo.jpg`) or remote */
+	/** Image URL — local (`/media1/foo.JPG`) or remote */
 	src: string;
 	/** Alt text for a11y */
 	alt: string;
@@ -22,7 +19,7 @@ export interface TimelineMediaImage {
 }
 
 export interface TimelineMediaVideo {
-	/** Video file URL — local (`/showcase/foo.mp4`) or remote */
+	/** Video file URL — local (`/media1/foo.MOV`) or remote */
 	src: string;
 	/** Poster image shown before playback */
 	poster?: string;
@@ -60,17 +57,17 @@ export const timelineEntries: TimelineEntry[] = [
 		title: "What if your street was the game map?",
 		subtitle: "Concept & useless-problem framing",
 		description:
-			"PLACEHOLDER — Zombie Deck started as a joke with a real question: how close is the nearest zombie while jogging past the local chaya kada? We sketched a handheld Pi terminal that turns OpenStreetMap roads + POIs into a live ASCII survival map. No joystick — you are the controller.",
+			"Zombie Deck started as a joke with a real question: how close is the nearest zombie while jogging past the local chaya kada? We sketched a handheld Pi terminal that turns OpenStreetMap roads + POIs into a live ASCII survival map. No joystick — you are the controller.",
 		bullets: [
-			"PLACEHOLDER — problem statement: quantify undead pursuit distance",
-			"PLACEHOLDER — solution sketch: Pi + TFT + GPS + keyboard",
-			"PLACEHOLDER — success criteria: run, or get eaten",
+			"Problem statement: quantify undead pursuit distance",
+			"Solution sketch: Pi + TFT + GPS + keyboard",
+			"Success criteria: run, or get eaten",
 		],
 		images: [
 			{
-				src: "https://picsum.photos/seed/zdeck-idea/800/450",
-				alt: "Placeholder sketch of the Zombie Deck concept",
-				caption: "PLACEHOLDER — replace with whiteboard / concept sketch photo",
+				src: "/media1/group%20(2).JPG",
+				alt: "Bit By Bit team behind the Zombie Deck concept",
+				caption: "The team that decided jogging needed zombies",
 			},
 		],
 		tags: ["concept", "design"],
@@ -83,30 +80,35 @@ export const timelineEntries: TimelineEntry[] = [
 		title: "Green dot vs. red dots",
 		subtitle: "Python curses prototype in --sim mode",
 		description:
-			"PLACEHOLDER — first playable prototype in app/cyberdeck.py. Black terminal, green player, red zombies that chase and catch. WASD movement with --sim flag for indoor testing. Tuning knobs: SCALE_M_PER_CELL, ZOMBIE_COUNT, ZOMBIE_SPEED_MPS, CATCH_RADIUS_M.",
+			"First playable prototype in app/cyberdeck.py. Black terminal, green player, red zombies that chase and catch. WASD movement with --sim flag for indoor testing. Tuning knobs: SCALE_M_PER_CELL, ZOMBIE_COUNT, ZOMBIE_SPEED_MPS, CATCH_RADIUS_M.",
 		bullets: [
-			"PLACEHOLDER — curses rendering loop at TICK_HZ",
-			"PLACEHOLDER — zombie chase AI + catch radius",
-			"PLACEHOLDER — screenshot of first prototype",
+			"Curses rendering loop at TICK_HZ",
+			"Zombie chase AI + catch radius",
+			"Screenshot of first prototype",
 		],
 		images: [
 			{
-				src: "https://picsum.photos/seed/zdeck-proto/800/450",
-				alt: "Placeholder screenshot of first prototype",
-				caption: "PLACEHOLDER — replace with assets/images/screenshot1.jpeg",
+				src: "/media1/building.JPG",
+				alt: "Early Zombie Deck build work",
+				caption: "First build sessions",
 			},
 			{
-				src: "https://picsum.photos/seed/zdeck-code/800/450",
-				alt: "Placeholder code screenshot",
-				caption: "PLACEHOLDER — replace with editor screenshot of cyberdeck.py",
+				src: "/media1/presenting3.JPG",
+				alt: "Walking through the early prototype",
+				caption: "Talking through the prototype",
 			},
 		],
 		video: {
-			src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-			poster: "https://picsum.photos/seed/zdeck-proto-poster/800/450",
-			caption: "PLACEHOLDER — replace with screen-recording of --sim gameplay (.mp4 in public/showcase/)",
+			src: "/media1/interview.MOV",
+			poster: "/media1/aurafarm.JPG",
+			caption: "Team interview on the build",
 		},
-		links: [{ label: "app/cyberdeck.py", href: "https://github.com" }],
+		links: [
+			{
+				label: "app/cyberdeck.py",
+				href: "https://github.com/Adithyaa04/useless_project_bitbybit/blob/journal/app/cyberdeck.py",
+			},
+		],
 		tags: ["python", "curses", "sim"],
 		status: "prototype",
 	},
@@ -117,17 +119,17 @@ export const timelineEntries: TimelineEntry[] = [
 		title: "OpenStreetMap integration",
 		subtitle: "fetch_map.py + offline map_data.json",
 		description:
-			"PLACEHOLDER — fetch_map.py downloads roads + POIs around your lat/lon from the Overpass API (stdlib only, no deps). The game then plays offline in the field. Named establishments are drawn so you can run toward shelter.",
+			"fetch_map.py downloads roads + POIs around your lat/lon from the Overpass API (stdlib only, no deps). The game then plays offline in the field. Named establishments are drawn so you can run toward shelter.",
 		bullets: [
-			"PLACEHOLDER — Overpass query: roads + POIs within radius",
-			"PLACEHOLDER — offline-first: pre-fetch with internet, play without",
-			"PLACEHOLDER — named places + shelter callouts",
+			"Overpass query: roads + POIs within radius",
+			"Offline-first: pre-fetch with internet, play without",
+			"Named places + shelter callouts",
 		],
 		images: [
 			{
-				src: "https://picsum.photos/seed/zdeck-map/800/450",
-				alt: "Placeholder OSM map integration screenshot",
-				caption: "PLACEHOLDER — replace with assets/images/screenshot3.jpeg",
+				src: "/media1/aurafarm.JPG",
+				alt: "Zombie Deck map work vibe",
+				caption: "Mapping the neighbourhood",
 			},
 		],
 		tags: ["osm", "maps", "offline"],
@@ -140,23 +142,23 @@ export const timelineEntries: TimelineEntry[] = [
 		title: "Live GPS movement",
 		subtitle: "NEO-6M over UART + pynmea2 / pyserial",
 		description:
-			"PLACEHOLDER — outdoors, your body is the joystick. NEO-6M GPS over UART (9600 baud NMEA) feeds player position. Indoors, fall back to --sim WASD. TFT occupies hardware UART so GPIO16 bit-bang mode via pigpio is supported.",
+			"Outdoors, your body is the joystick. NEO-6M GPS over UART (9600 baud NMEA) feeds player position. Indoors, fall back to --sim WASD. TFT occupies hardware UART so GPIO16 bit-bang mode via pigpio is supported.",
 		bullets: [
-			"PLACEHOLDER — GPS parsing: pynmea2 + pyserial",
-			"PLACEHOLDER — wiring: TX → GPIO16, GND, VCC",
-			"PLACEHOLDER — field test video: walking = moving on map",
+			"GPS parsing: pynmea2 + pyserial",
+			"Wiring: TX → GPIO16, GND, VCC",
+			"Field test: walking = moving on map",
 		],
 		images: [
 			{
-				src: "https://picsum.photos/seed/zdeck-gps/800/450",
-				alt: "Placeholder GPS module photo",
-				caption: "PLACEHOLDER — replace with NEO-6M wiring photo",
+				src: "/media1/DSC04539%20(1).JPG",
+				alt: "Field testing the Zombie Deck GPS",
+				caption: "Out in the field with the deck",
 			},
 		],
 		video: {
-			src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-			poster: "https://picsum.photos/seed/zdeck-gps-poster/800/450",
-			caption: "PLACEHOLDER — replace with field-test GPS walk video",
+			src: "/media1/interview.MOV",
+			poster: "/media1/DSC04539%20(1).JPG",
+			caption: "Talking through the GPS field tests",
 		},
 		tags: ["gps", "hardware", "neo-6m"],
 		status: "testing",
@@ -168,17 +170,17 @@ export const timelineEntries: TimelineEntry[] = [
 		title: "Faster TUI, same hunger",
 		subtitle: "ratatui + crossterm binaries",
 		description:
-			"PLACEHOLDER — Rust port for speed: zdeck-game / zdeck-gps / zdeck-fetch / zdeck-run / zdeck-cardkb. Same game logic, snappier terminal UI. Cross-compile for Pi 3 (arm64 + armv7) via Docker in rust/build-pi.sh.",
+			"Rust port for speed: zdeck-game / zdeck-gps / zdeck-fetch / zdeck-run / zdeck-cardkb. Same game logic, snappier terminal UI. Cross-compile for Pi 3 (arm64 + armv7) via Docker in rust/build-pi.sh.",
 		bullets: [
-			"PLACEHOLDER — ratatui + crossterm TUI",
-			"PLACEHOLDER — clap CLI, serde_json maps",
-			"PLACEHOLDER — side-by-side Python vs Rust demo",
+			"ratatui + crossterm TUI",
+			"clap CLI, serde_json maps",
+			"Side-by-side Python vs Rust demo",
 		],
 		images: [
 			{
-				src: "https://picsum.photos/seed/zdeck-rust/800/450",
-				alt: "Placeholder Rust TUI screenshot",
-				caption: "PLACEHOLDER — replace with zdeck-run terminal screenshot",
+				src: "/media1/presenting2.JPG",
+				alt: "Presenting the Rust port",
+				caption: "Presenting the faster TUI",
 			},
 		],
 		tags: ["rust", "ratatui", "tui"],
@@ -191,33 +193,33 @@ export const timelineEntries: TimelineEntry[] = [
 		title: "Pi + TFT + CardKB assembly",
 		subtitle: "Schematic, circuit, build photos",
 		description:
-			"PLACEHOLDER — handheld assembly: Pi 3, 3.5in TFT over SPI, M5Stack CardKB over I2C (0x5F) exposed via uinput, USB power bank. Boot-to-game via tty1 login hook (zdeck-main.sh). CardKB setup + diagnostics in cardkb/.",
+			"Handheld assembly: Pi 3, 3.5in TFT over SPI, M5Stack CardKB over I2C (0x5F) exposed via uinput, USB power bank. Boot-to-game via tty1 login hook (zdeck-main.sh). CardKB setup + diagnostics in cardkb/.",
 		bullets: [
-			"PLACEHOLDER — schematic + circuit photos",
-			"PLACEHOLDER — CardKB I2C wiring: SDA→GPIO2, SCL→GPIO3",
-			"PLACEHOLDER — build progress photos op1 → op4 → final",
+			"Schematic + circuit photos",
+			"CardKB I2C wiring: SDA→GPIO2, SCL→GPIO3",
+			"Build progress photos",
 		],
 		images: [
 			{
-				src: "https://picsum.photos/seed/zdeck-circuit/800/450",
-				alt: "Placeholder circuit photo",
-				caption: "PLACEHOLDER — replace with assets/images/circuit.jpeg",
+				src: "/media1/presenting.JPG",
+				alt: "Assembled Zombie Deck handheld",
+				caption: "The assembled deck",
 			},
 			{
-				src: "https://picsum.photos/seed/zdeck-build/800/450",
-				alt: "Placeholder build photo",
-				caption: "PLACEHOLDER — replace with assets/images/op1.jpeg",
+				src: "/media1/building.JPG",
+				alt: "Deck assembly work",
+				caption: "Putting the hardware together",
 			},
 			{
-				src: "https://picsum.photos/seed/zdeck-final/800/450",
-				alt: "Placeholder final deck photo",
-				caption: "PLACEHOLDER — replace with assets/images/zdeck.jpeg",
+				src: "/media1/group%20(2).JPG",
+				alt: "Team with the finished deck",
+				caption: "Builders with their creation",
 			},
 		],
 		video: {
-			src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-			poster: "https://picsum.photos/seed/zdeck-assembly-poster/800/450",
-			caption: "PLACEHOLDER — replace with assembly timelapse video",
+			src: "/media1/interview.MOV",
+			poster: "/media1/presenting3.JPG",
+			caption: "Interview on the deck assembly",
 		},
 		tags: ["hardware", "pi3", "tft", "cardkb"],
 		status: "building",
@@ -229,22 +231,22 @@ export const timelineEntries: TimelineEntry[] = [
 		title: "Run for your life",
 		subtitle: "Live demo + what's next",
 		description:
-			"PLACEHOLDER — final demo: power on, load locality, spawn zombies, run. Add your Drive demo link, final build photo, and reflections here. Next: sound, haptics, multiplayer horde mode, bigger TFT?",
+			"Final demo: power on, load locality, spawn zombies, run. Next: sound, haptics, multiplayer horde mode, bigger TFT?",
 		images: [
 			{
-				src: "https://picsum.photos/seed/zdeck-demo/800/450",
-				alt: "Placeholder demo photo",
-				caption: "PLACEHOLDER — replace with final demo photo",
+				src: "/media1/presenting.JPG",
+				alt: "Zombie Deck demo day",
+				caption: "Demo day",
 			},
 		],
 		video: {
-			src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-			poster: "https://picsum.photos/seed/zdeck-demo-poster/800/450",
-			caption: "PLACEHOLDER — replace with Drive demo video (download to public/showcase/demo.mp4)",
+			src: "/media1/interview.MOV",
+			poster: "/media1/presenting2.JPG",
+			caption: "Demo-day interview",
 		},
 		links: [
 			{ label: "Demo video (Drive)", href: "https://drive.google.com/" },
-			{ label: "Source", href: "https://github.com" },
+			{ label: "Source", href: "https://github.com/Adithyaa04/useless_project_bitbybit" },
 		],
 		tags: ["demo", "final"],
 		status: "done",

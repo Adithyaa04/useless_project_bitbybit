@@ -23,8 +23,7 @@ const meta = {
 			</p>
 			<p>
 				This page documents the making of the project as a timeline — each milestone has text,
-				images, and video. All media below are <strong>placeholders</strong>: swap them with real
-				build photos, screenshots, and clips when ready. See
+				images, and video from the build. See
 				<code>src/data/timeline.ts</code> for where to edit.
 			</p>
 		</div>
@@ -73,23 +72,17 @@ const meta = {
 		<Timeline entries={timelineEntries} />
 	</section>
 
-	{/* How to replace placeholders — keeps cactus admonition/prose look */}
+	{/* How to edit the timeline */}
 	<section class="mt-12">
-		<h2 class="title mb-4 text-xl">Replace placeholders</h2>
+		<h2 class="title mb-4 text-xl">Edit the timeline</h2>
 		<div class="prose prose-sm prose-cactus max-w-none">
 			<ol class="list-inside list-decimal" role="list">
 				<li>Edit <code>src/data/timeline.ts</code> — text, dates, bullets, tags per entry.</li>
 				<li>
-					Add real media to <code>public/showcase/</code> (e.g.
-					<code>demo.mp4</code>, <code>build-01.jpg</code>), then set
-					<code>images[].src: "/showcase/build-01.jpg"</code> and
-					<code>video.src: "/showcase/demo.mp4"</code>.
+					Media lives in <code>public/media1/</code> — set
+					<code>images[].src: "/media1/your-photo.JPG"</code> and
+					<code>video.src: "/media1/your-clip.MOV"</code>.
 				</li>
-				<li>
-					For repo assets, copy from <code>../../assets/images/</code> into
-					<code>public/showcase/</code> so Astro serves them.
-				</li>
-				<li>Keep the theme: this page only uses <code>title</code>, <code>prose-cactus</code>, <code>cactus-link</code>, and accent/muted tokens.</li>
 			</ol>
 			<p>
 				<a class="cactus-link inline-block" href={withBase("/")}>← Back home</a>

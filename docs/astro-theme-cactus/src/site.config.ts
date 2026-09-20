@@ -11,7 +11,7 @@ export const siteConfig: SiteConfig = {
 		- In the footer found in src/components/layout/Footer.astro L:12
 	*/
 	title: "Zombie Deck",
-	// Used as both a meta property (src/components/BaseHead.astro L:31 + L:49) & the generated satori png (src/pages/og-image/[slug].png.ts)
+	// Used as both a meta property (src/components/BaseHead.astro L:31 + L:49) & the social-card png fallback
 	author: "Bit By Bit",
 	// Used as the default description meta property and webmanifest description
 	description: "Zombie Deck — a handheld Raspberry Pi zombie chase game. Project showcase & build timeline.",
@@ -44,14 +44,6 @@ export const menuLinks: { path: string; title: string }[] = [
 	{
 		path: "/about/",
 		title: "About",
-	},
-	{
-		path: "/posts/",
-		title: "Blog",
-	},
-	{
-		path: "/notes/",
-		title: "Notes",
 	},
 ];
 
