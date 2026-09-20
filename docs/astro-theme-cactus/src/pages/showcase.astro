@@ -72,21 +72,7 @@ const meta = {
 		<Timeline entries={timelineEntries} />
 	</section>
 
-	{/* How to edit the timeline */}
-	<section class="mt-12">
-		<h2 class="title mb-4 text-xl">Edit the timeline</h2>
-		<div class="prose prose-sm prose-cactus max-w-none">
-			<ol class="list-inside list-decimal" role="list">
-				<li>Edit <code>src/data/timeline.ts</code> — text, dates, bullets, tags per entry.</li>
-				<li>
-					Media lives in <code>public/media1/</code> — set
-					<code>images[].src: "/media1/your-photo.JPG"</code> and
-					<code>video.src: "/media1/your-clip.MOV"</code>.
-				</li>
-			</ol>
-			<p>
-				<a class="cactus-link inline-block" href={withBase("/")}>← Back home</a>
-			</p>
-		</div>
-	</section>
+	<p class="mt-12">
+		<a class="cactus-link inline-block" href={withBase("/")}>← Back home</a>
+	</p>
 </PageLayout>

@@ -65,8 +65,8 @@ export const timelineEntries: TimelineEntry[] = [
 		],
 		images: [
 			{
-				src: "/media1/group%20(2).JPG",
-				alt: "Bit By Bit team behind the Zombie Deck concept",
+				src: "/media1/cutepic.jpg",
+				alt: "Team cute pic",
 				caption: "The team that decided jogging needed zombies",
 			},
 		],
@@ -88,19 +88,19 @@ export const timelineEntries: TimelineEntry[] = [
 		],
 		images: [
 			{
-				src: "/media1/building.JPG",
-				alt: "Early Zombie Deck build work",
-				caption: "First build sessions",
+				src: "/media1/first.jpeg",
+				alt: "First build session",
+				caption: "First build session",
 			},
 			{
-				src: "/media1/presenting3.JPG",
-				alt: "Walking through the early prototype",
+				src: "/media1/aurafarm.JPG",
+				alt: "Talking through the prototype",
 				caption: "Talking through the prototype",
 			},
 		],
 		video: {
-			src: "/media1/interview.MOV",
-			poster: "/media1/aurafarm.JPG",
+			src: "/media1/interviewreal.mp4",
+			poster: "/media1/building.JPG",
 			caption: "Team interview on the build",
 		},
 		links: [
@@ -125,13 +125,11 @@ export const timelineEntries: TimelineEntry[] = [
 			"Offline-first: pre-fetch with internet, play without",
 			"Named places + shelter callouts",
 		],
-		images: [
-			{
-				src: "/media1/aurafarm.JPG",
-				alt: "Zombie Deck map work vibe",
-				caption: "Mapping the neighbourhood",
-			},
-		],
+		video: {
+			src: "/media1/osm.mp4",
+			poster: "/media1/aurafarm.JPG",
+			caption: "Mapping the neighbourhood — OSM fetch in action",
+		},
 		tags: ["osm", "maps", "offline"],
 		status: "building",
 	},
@@ -156,7 +154,7 @@ export const timelineEntries: TimelineEntry[] = [
 			},
 		],
 		video: {
-			src: "/media1/interview.MOV",
+			src: "/media1/gpswork.mp4",
 			poster: "/media1/DSC04539%20(1).JPG",
 			caption: "Talking through the GPS field tests",
 		},
@@ -183,6 +181,11 @@ export const timelineEntries: TimelineEntry[] = [
 				caption: "Presenting the faster TUI",
 			},
 		],
+		video: {
+			src: "/media1/rustintegrated.mp4",
+			poster: "/media1/presenting2.JPG",
+			caption: "Rust TUI integrated and running",
+		},
 		tags: ["rust", "ratatui", "tui"],
 		status: "building",
 	},
@@ -201,18 +204,18 @@ export const timelineEntries: TimelineEntry[] = [
 		],
 		images: [
 			{
-				src: "/media1/presenting.JPG",
-				alt: "Assembled Zombie Deck handheld",
+				src: "/media1/deck.jpeg",
+				alt: "The assembled deck",
 				caption: "The assembled deck",
 			},
 			{
-				src: "/media1/building.JPG",
-				alt: "Deck assembly work",
+				src: "/media1/assembly.jpeg",
+				alt: "Putting the hardware together",
 				caption: "Putting the hardware together",
 			},
 			{
-				src: "/media1/group%20(2).JPG",
-				alt: "Team with the finished deck",
+				src: "/media1/presenting.JPG",
+				alt: "Builders with their creation",
 				caption: "Builders with their creation",
 			},
 		],
@@ -240,15 +243,43 @@ export const timelineEntries: TimelineEntry[] = [
 			},
 		],
 		video: {
-			src: "/media1/interview.MOV",
+			src: "/media1/demoday.mp4",
 			poster: "/media1/presenting2.JPG",
-			caption: "Demo-day interview",
+			caption: "Demo-day video",
 		},
 		links: [
 			{ label: "Demo video (Drive)", href: "https://drive.google.com/" },
 			{ label: "Source", href: "https://github.com/Adithyaa04/useless_project_bitbybit" },
 		],
 		tags: ["demo", "final"],
+		status: "done",
+	},
+	{
+		id: "top-5",
+		date: "2026-05-10",
+		displayDate: "Got Selected in Top 5!!",
+		title: "Got Selected in Top 5!!",
+		subtitle: "Useless Projects 3.0 finals",
+		description:
+			"Zombie Deck made it to the Top 5 at TinkerHub Useless Projects 3.0! All that running from imaginary zombies paid off. Thanks to everyone who cheered, played the demo, and believed that jogging needed zombies.",
+		bullets: [
+			"Selected among the Top 5 projects",
+			"Live demo + presenting to the judges",
+			"Team celebration",
+		],
+		images: [
+			{
+				src: "/media1/top5.jpg",
+				alt: "Top 5 selection",
+				caption: "Top 5!!",
+			},
+			{
+				src: "/media1/group%20(2).JPG",
+				alt: "Team group photo",
+				caption: "The team",
+			},
+		],
+		tags: ["top5", "finals", "celebration"],
 		status: "done",
 	},
 ];
