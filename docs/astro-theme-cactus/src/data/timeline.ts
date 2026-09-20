@@ -220,7 +220,7 @@ export const timelineEntries: TimelineEntry[] = [
 			},
 		],
 		video: {
-			src: "/media1/interview.MOV",
+			src: "/media1/interviewreal.mp4",
 			poster: "/media1/presenting3.JPG",
 			caption: "Interview on the deck assembly",
 		},

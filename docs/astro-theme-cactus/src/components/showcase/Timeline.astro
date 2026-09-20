@@ -1,5 +1,6 @@
 ---
 import type { TimelineEntry } from "@/data/timeline";
+import { withBase } from "@/utils/base";
 
 interface Props {
 	entries: TimelineEntry[];
@@ -57,7 +58,7 @@ const statusLabel: Record<string, string> = {
 									alt={img.alt}
 									class="aspect-video w-full object-cover transition-transform duration-300 group-hover:scale-[1.01]"
 									loading="lazy"
-									src={img.src}
+									src={withBase(img.src)}
 								/>
 								{img.caption && (
 									<figcaption class="px-3 py-2 text-xs text-muted">{img.caption}</figcaption>
@@ -70,8 +71,8 @@ const statusLabel: Record<string, string> = {
 				{/* Video — HTML5 player, theme-matched frame */}
 				{entry.video && (
 					<figure class="mt-4 overflow-hidden rounded-lg border border-muted/20 bg-global-bg">
-						<video class="aspect-video w-full bg-black" controls preload="metadata" poster={entry.video.poster}>
-							<source src={entry.video.src} type={entry.video.src.endsWith(".mov") ? "video/quicktime" : "video/mp4"} />
+						<video class="aspect-video w-full bg-black" controls preload="metadata" poster={entry.video.poster ? withBase(entry.video.poster) : undefined}>
+							<source src={withBase(entry.video.src)} type={entry.video.src.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4"} />
 							Your browser does not support the video tag.
 						</video>
 						{entry.video.caption && (
