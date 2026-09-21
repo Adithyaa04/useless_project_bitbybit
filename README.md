@@ -224,7 +224,7 @@ Better output model — named establishments drawn on the map so you can run tow
 <img width="500" alt="Build 3" src="./assets/images/op3.jpeg">
 <img width="500" alt="Build 4" src="./assets/images/op4.jpeg">
 
-<img width="500" alt="Final build" src="./assets/images/zdeck.jpeg">
+<img width="500" alt="Final build" src="./assets/images/zdeck.png">
 
 ### Project Demo
 
